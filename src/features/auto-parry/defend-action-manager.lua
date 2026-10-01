@@ -1,6 +1,14 @@
 local Signal = require("@src/utility/signal");
 local Keybinds = base_require(game:GetService("ReplicatedStorage"):WaitForChild("KeyBinds"));
 
+-- restore: live KeyHandler lookup (see action_tracker.lua — stale snapshots)
+local function live_kh()
+    local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+    local kh = gg and gg.KeyHandler or nil
+    if type(kh) == "table" then return kh end
+    return KeyHandler
+end
+
 local DefendActionManager = {} do
     DefendActionManager.actions_to_play_through = {};
     DefendActionManager.currently_handling = {};
@@ -19,14 +27,14 @@ local DefendActionManager = {} do
             return        
 end
 
-        local remote = KeyHandler:get_cache("Block");
+        local remote = live_kh():get_cache("Block");
 
         if remote and not remote:IsDescendantOf(local_player.character) then
             remote = nil
         end
         
         if not remote then
-            remote = KeyHandler:get_key("Block")
+            remote = live_kh():get_key("Block")
         end
         
         if not remote then return end 
@@ -43,14 +51,14 @@ end
             return        
 end
 
-        local remote = KeyHandler:get_cache("Unblock");
+        local remote = live_kh():get_cache("Unblock");
 
         if remote and not remote:IsDescendantOf(local_player.character) then
             remote = nil
         end
         
         if not remote then
-            remote = KeyHandler:get_key("Unblock")
+            remote = live_kh():get_key("Unblock")
         end
         
         if not remote then return end 
@@ -259,7 +267,7 @@ elseif aztup_options.fallbacks.Value.Block then
         function DefendActionManager:defend_action_dodge(action)
             local type = action.mob.Name:sub(1, 1) == "." and "pve_" or "pvp_"
             if aztup.flags[type .. "blatant_roll"] and not action.full then
-                KeyHandler:get_key("Dodge"):FireServer("roll", nil, nil, false);
+                live_kh():get_key("Dodge"):FireServer("roll", nil, nil, false);
             
                 if aztup.flags[type .. "blatant_roll_with_anims"] then
                     task.spawn(function() 
@@ -310,7 +318,7 @@ elseif aztup_options.fallbacks.Value.Block then
                 end
             
                 return task.delay(.15, function()
-                    KeyHandler:get_key("StopDodge"):FireServer({
+                    live_kh():get_key("StopDodge"):FireServer({
                         W = false,
                         Right = true,
                         S = false,
