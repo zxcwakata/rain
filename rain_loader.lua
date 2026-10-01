@@ -831,6 +831,28 @@ getgenv().RAIN_FXSPY = function()
     print("[fxspy] installed")
 end
 
+-- animation coverage dump: which enemy swings were seen and which lack data.
+-- Fight mobs ~30s, then run RAIN_ANIMDUMP(). "MISS" = no timing data (unparryable
+-- by design until data added); "HIT" + no parry = filters/execution, say so.
+getgenv().RAIN_ANIMDUMP = function()
+    local t = getgenv().RAIN_ANIMS
+    if not t or not next(t) then
+        print("[animdump] empty — handler saw no swings (auto_parry on? enemies near?)")
+        return
+    end
+    local rows = {}
+    for id, e in pairs(t) do
+        local who = {}
+        for w in pairs(e.who) do table.insert(who, w) end
+        table.insert(rows, { n = e.n, line = string.format("%s x%d id=%s from=%s",
+            e.has_data and "HIT " or "MISS", e.n, tostring(id), table.concat(who, ",")) })
+    end
+    table.sort(rows, function(a, b) return a.n > b.n end)
+    for i = 1, math.min(#rows, 30) do print("[animdump] " .. rows[i].line) end
+    print(string.format("[animdump] %d distinct anims", #rows))
+end
+getgenv().RAIN_ANIMCLR = function() getgenv().RAIN_ANIMS = {} print("[animdump] cleared") end
+
 -- on-demand keyhandler/remote diagnostics (parry execution depends on these)
 getgenv().RAIN_KHDIAG = function()
     local kh = getgenv().KeyHandler
