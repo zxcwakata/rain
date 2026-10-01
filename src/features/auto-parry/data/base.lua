@@ -870,7 +870,7 @@ return {
 
         task.delay(0.2 - Latency:get_ping(), function()
             local conn = thrown.ChildAdded:Connect(function(part)
-                if EffectReplicator:FindEffect("ParryCool") or not local_player.tracker:can_parry() then return end
+                if (getgenv().EffectReplicator or EffectReplicator):FindEffect("ParryCool") or not local_player.tracker:can_parry() then return end
                 if part.Name == "ShadowSlash" then
                     num += 1;
                     if num == 2 then return end
