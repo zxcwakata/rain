@@ -1348,6 +1348,26 @@ end;
 
         local data, pot_name = lookup_timing_data(id);
 
+        -- restore: animation coverage log (RAIN_ANIMDUMP). Records every enemy
+        -- swing: which anim id, from whom, and whether timing data exists.
+        do
+            local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+            gg.RAIN_ANIMS = gg.RAIN_ANIMS or {}
+            local key = tostring(id)
+            local e = gg.RAIN_ANIMS[key]
+            if not e then
+                e = { n = 0, has_data = false, who = {} }
+                gg.RAIN_ANIMS[key] = e
+            end
+            e.n += 1
+            if data then e.has_data = true end
+            local en = tostring(self.entity and self.entity.Name or "?")
+            if e.who[en] == nil then
+                local c = 0 for _ in pairs(e.who) do c += 1 end
+                if c < 6 then e.who[en] = true end
+            end
+        end
+
         log_info_if_enabled(self, track);
 
         if not data or tasks >= (aztup.flags.task_concurrency or 25) then
