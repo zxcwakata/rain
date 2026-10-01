@@ -18,7 +18,7 @@
 
 ]]
 
-local BASE_URL = "https://raw.githubusercontent.com/crownedwithbloodytears/project-rain-oss-master/main/"
+local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 
 if not game:IsLoaded() then
     repeat task.wait() until game:IsLoaded()
@@ -856,7 +856,19 @@ task.spawn(function()
             return require(m)
         end)
         if ok and mod then
+            -- fxspy proved chunks can hold a STALE global snapshot (tracker saw
+            -- the boot stub while getgenv() already had the real module, so
+            -- can_parry stayed false with a sword in hand). Upgrade in place:
+            -- mutate the stub table so every stale reference delegates live.
+            local old = getgenv().EffectReplicator
             getgenv().EffectReplicator = mod
+            EffectReplicator = mod
+            if type(old) == "table" and old ~= mod then
+                pcall(function()
+                    for k, v in pairs(mod) do old[k] = v end
+                    setmetatable(old, { __index = mod })
+                end)
+            end
             warn("[restore] real EffectReplicator bound")
             break
         end
