@@ -1,23 +1,3 @@
---[[
-
-    Rain OSS FULL RESTORE loader — Project Rain (Deepwoken), community restore.
-    Original code: Project Rain OSS (keep credits if you redistribute).
-
-    HOW TO USE:
-      1. Upload the whole `project-rain-oss-master` folder to GitHub
-         (keep `src/` and `assets/` layout exactly).
-      2. Set BASE_URL below to your raw base, e.g.
-         "https://raw.githubusercontent.com/YOU/REPO/main/project-rain-oss-master/"
-      3. Execute this file in Deepwoken. AutoExecute-ready.
-
-    What was reimplemented (stripped upstream): require/list_modules builder,
-    security/user_service, luarmor init, main_menu loader, features/loader,
-    timing builder, custom timings, refresh button, spotify widget,
-    asset pipeline (inline_asset_b96/decode_asset over HTTP).
-    Game/UI/feature files load VERBATIM from your repo.
-
-]]
-
 local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
