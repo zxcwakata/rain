@@ -1714,15 +1714,21 @@ end
             }, {
                 __index = base_env,
             })
-            -- restore: setfenv is unavailable here; run with temp globals instead
+            -- restore: setfenv is unavailable here; run with temp globals instead.
+            -- NOTE: the holder thread can be killed mid-run (track cancel on
+            -- feint/end), so a plain boolean lock deadlocks ALL parrying
+            -- forever. Deadline waiter + save/restore bounds damage to ~1s.
             do
-                while getgenv().__rain_runlock do task.wait() end
+                local __deadline = tick() + 1
+                while getgenv().__rain_runlock and tick() < __deadline do task.wait() end
                 getgenv().__rain_runlock = true
-                for __k in pairs(fake_env) do getgenv()[__k] = fake_env[__k] end
+                local __saved = {}
+                for __k in pairs(fake_env) do __saved[__k] = getgenv()[__k] getgenv()[__k] = fake_env[__k] end
                 if getgenv().thrown == nil then
                     getgenv().thrown = workspace:FindFirstChild("Thrown") or { ChildAdded = { Connect = function() return { Disconnect = function() end } end } }
                 end
                 local __ok, __err = pcall(data.run, actions, self)
+                for __k in pairs(fake_env) do getgenv()[__k] = __saved[__k] end
                 getgenv().__rain_runlock = nil
                 if not __ok then warn("[restore] parry run: " .. tostring(__err)) end
             end
