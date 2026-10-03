@@ -14,7 +14,13 @@
 local IMAGE_ID = "" -- e.g. "rbxassetid://123456789"
 local IMAGE_PATH = "RainBanner.png" -- e.g. "RainBanner.png" (in executor workspace folder)
 local IMAGE_URL = "" -- e.g. "https://.../banner.png"
-local BANNER_W, BANNER_H = 100, 756
+-- Corner-grab preset: menu is 550 wide, so a 550-wide banner centers its own
+-- top corners exactly onto the menu's top corners. Source is 1088x944, so
+-- H = 550*944/1088 = 477 keeps ratio.
+-- GRAB_OVERLAP: how many px the picture slides DOWN over the window edge
+-- (hands "grab" the frame). Increase if hands float above, decrease if buried.
+local BANNER_W, BANNER_H = 550, 477
+local GRAB_OVERLAP = 6
 
 local function resolve_image()
     -- restore: executor globals (getcustomasset/isfile/writefile) may be
@@ -61,7 +67,7 @@ return { initialize = function()
     local btn = Instance.new("ImageButton")
     btn.Name = "RainBanner"
     btn.AnchorPoint = Vector2.new(0.5, 1)
-    btn.Position = UDim2.new(0.5, 0, 0, -8)
+    btn.Position = UDim2.new(0.5, 0, 0, GRAB_OVERLAP)
     btn.Size = UDim2.new(0, BANNER_W, 0, BANNER_H)
     btn.BackgroundTransparency = 1
     btn.BorderSizePixel = 0
