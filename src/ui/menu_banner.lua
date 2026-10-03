@@ -20,7 +20,7 @@ local IMAGE_URL = "" -- e.g. "https://.../banner.png"
 -- GRAB_OVERLAP: how many px the picture slides DOWN over the window edge
 -- (hands "grab" the frame). Increase if hands float above, decrease if buried.
 local BANNER_W, BANNER_H = 550, 477
-local GRAB_OVERLAP = 240
+local GRAB_OVERLAP = 210
 
 local function resolve_image()
     -- restore: executor globals (getcustomasset/isfile/writefile) may be
@@ -75,7 +75,7 @@ return { initialize = function()
     if not img then return warn("[restore] menu_banner: no image (fill IMAGE_ID/PATH/URL)") end
     btn.Image = img
     btn.ScaleType = Enum.ScaleType.Fit
-    btn.ZIndex = 5
+    btn.ZIndex = 0
     btn.AutoButtonColor = true
     -- restore: let clicks fall through to the game (camera rotate etc.).
     -- Trade-off: ON_CLICK below will NOT fire while this is false.
