@@ -30,6 +30,18 @@ local function has_iframes()
     return false
 end
 
+-- restore: post-parry punish window (shared with the animator fallback).
+-- After OUR successful parry, stagger/next anims retrigger defense and the
+-- forced re-block/re-roll eats the riposte. Freeze ALL defense 0.7s past
+-- the last ParryCool sighting. Set by both this file and the fallback.
+local function in_post_parry_window()
+    local gg = getgenv()
+    local er = gg.EffectReplicator or EffectReplicator
+    local ok, pc = pcall(function() return er:FindEffect("ParryCool") end)
+    if ok and pc then gg.__rain_lastpc = tick() end
+    return gg.__rain_lastpc and (tick() - gg.__rain_lastpc) < 0.7
+end
+
 local DefendActionManager = {} do
     DefendActionManager.actions_to_play_through = {};
     DefendActionManager.currently_handling = {};
@@ -247,6 +259,8 @@ end
         function DefendActionManager:defend_action_block(action, dont_pass)
             -- restore: bundle gates — i-frames (75553-75587), Action/Knocked (26048-26050)
             if has_iframes() then return end
+            -- restore: no re-block inside the post-parry punish window
+            if in_post_parry_window() then return end
             do
                 local er = live_er()
                 local ok_a, act = pcall(function() return er:HasEffect("Action") end)
@@ -312,9 +326,42 @@ elseif aztup_options.fallbacks.Value.Block then
         function DefendActionManager:defend_action_dodge(action)
             -- restore: bundle UseIFrames (75585-75587)
             if has_iframes() then return end
+            -- restore: no re-roll inside the post-parry punish window either —
+            -- rolling right after our parry is what eats the riposte.
+            if in_post_parry_window() then return end
             local type = action.mob.Name:sub(1, 1) == "." and "pve_" or "pvp_"
             if aztup.flags[type .. "blatant_roll"] and not action.full then
-                live_kh():get_key("Dodge"):FireServer("roll", nil, nil, false);
+                -- restore: bundle InputClient.dodge (10828-10876). There is NO
+                -- "Dodge" remote in the KeyHandler table (bundle never requests
+                -- one) — the dodge remote lives in CharacterHandler.Requests.
+                -- The old get_key("Dodge") returned nil and errored here, so no
+                -- blatant dodge/roll-cancel ever ran.
+                do
+                    local char = local_player.character
+                    local ch = char and char:FindFirstChild("CharacterHandler")
+                    local req = ch and ch:FindFirstChild("Requests")
+                    local dodge_remote = req and req:FindFirstChild("Dodge")
+                    local er0 = getgenv().EffectReplicator or EffectReplicator
+                    local function has_fx(n)
+                        local ok, r = pcall(function() return er0:HasEffect(n) end)
+                        return ok and r
+                    end
+                    if dodge_remote then
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        local in_air = false
+                        if hrp then
+                            local ok_r, hit = pcall(function()
+                                return workspace:Raycast(hrp.Position, Vector3.new(0, -4, 0), RaycastParams.new())
+                            end)
+                            in_air = ok_r and hit == nil
+                        end
+                        dodge_remote:FireServer(has_fx("ClientSwim") and "waterdash" or "roll", {
+                            ancient = false,
+                            spin_attack = has_fx("SpinAttack") and true or false,
+                            in_air = in_air and true or false,
+                        })
+                    end
+                end
             
                 if aztup.flags[type .. "blatant_roll_with_anims"] then
                     task.spawn(function() 

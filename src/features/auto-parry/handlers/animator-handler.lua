@@ -1466,7 +1466,17 @@ end;
                 if fire and aztup.flags.parry_unknown_anims == false then fire = false note("disabled") end
                 if fire and (not self.entity or not local_player.character) then fire = false note("no_char") end
                 if fire and self.entity.Name == local_player.character.Name then fire = false note("self") end
-                if fire and (not local_player.tracker or not local_player.tracker:can_parry()) then fire = false note("can_parry=false") end
+                -- restore: parry unavailable (CD/unequipped) => dodge instead of
+                -- doing nothing ("dodge if parry on CD" for unknown anims, no
+                -- Humanization needed). can_dodge() still required.
+                local parry_unavail = false
+                if fire then
+                    if not local_player.tracker then fire = false note("no_tracker") end
+                end
+                if fire then
+                    local ok_cp, cp = pcall(function() return local_player.tracker:can_parry() end)
+                    if not ok_cp or not cp then parry_unavail = true end
+                end
                 if fire and not TargetFilter.is_allowed(self.entity, aztup_options.allowed_targets.Value) then fire = false note("target_filter") end
                 local eroot, lroot, dist, lim
                 if fire then
@@ -1513,8 +1523,8 @@ end;
                     -- parries, never dodges" — the fallback previously knew only
                     -- block). Uses the M1 force-dodge chance + Humanization flag.
                     local queued_how = "block"
-                    local want_dodge = false
-                    if aztup.flags.ap_randomization then
+                    local want_dodge = parry_unavail
+                    if not want_dodge and aztup.flags.ap_randomization then
                         local chance = aztup.flags.parry_to_dodge_chance_m1 or 0
                         if math.random() * 100 < chance then want_dodge = true end
                     end
@@ -1524,11 +1534,15 @@ end;
                         if can then
                             DefendActionManager:queue_generic_dodge_task(self.entity)
                             queued_how = "dodge"
-                            why = "queued_dodge"
+                            why = parry_unavail and "queued_dodge_cd" or "queued_dodge"
                         end
                     end
                     if queued_how == "block" then
-                        DefendActionManager:queue_generic_parry_task(self.entity, 0.75)
+                        if parry_unavail then
+                            fire = false note("can_parry=false")
+                        else
+                            DefendActionManager:queue_generic_parry_task(self.entity, 0.75)
+                        end
                     end
                     getgenv().__rain_nr = getgenv().__rain_nr or 0
                     if tick() - getgenv().__rain_nr > 3 then
