@@ -23,7 +23,7 @@ local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
 -- If it prints nil or an older tag, you are executing a STALE copy
 -- (old file contents, executor cache, or a duplicate in autoexec folder).
-getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-2"
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-3"
 print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
 
 if not game:IsLoaded() then
@@ -850,14 +850,37 @@ getgenv().RAIN_ANIMDUMP = function()
     for id, e in pairs(t) do
         local who = {}
         for w in pairs(e.who) do table.insert(who, w) end
-        table.insert(rows, { n = e.n, line = string.format("%s x%d id=%s name=[%s] from=%s",
-            e.has_data and "HIT " or "MISS", e.n, tostring(id), tostring(e.nm or "?"), table.concat(who, ",")) })
+        table.insert(rows, { n = e.n, line = string.format("%s x%d id=%s name=[%s] why=[%s] from=%s",
+            e.has_data and "HIT " or "MISS", e.n, tostring(id), tostring(e.nm or "?"),
+            tostring(e.why or (e.has_data and "known-path" or "?")), table.concat(who, ",")) })
     end
     table.sort(rows, function(a, b) return a.n > b.n end)
     for i = 1, math.min(#rows, 30) do print("[animdump] " .. rows[i].line) end
     print(string.format("[animdump] %d distinct anims", #rows))
+    local fb = getgenv().RAIN_FB
+    if fb and next(fb) then
+        local parts = {}
+        for k, v in pairs(fb) do table.insert(parts, k .. "=" .. v) end
+        print("[animdump] fallback outcomes: " .. table.concat(parts, ", "))
+    else
+        print("[animdump] fallback never ran (no unknown-anims seen or old handler)")
+    end
 end
-getgenv().RAIN_ANIMCLR = function() getgenv().RAIN_ANIMS = {} print("[animdump] cleared") end
+getgenv().RAIN_ANIMCLR = function() getgenv().RAIN_ANIMS = {} getgenv().RAIN_FB = {} print("[animdump] cleared") end
+
+-- spectate diagnostics: distinguishes "clicks never arrive" from "map broken"
+-- from "subject fails". Click a leaderboard row, then run RAIN_SPECDIAG().
+getgenv().RAIN_SPECDIAG = function()
+    print("clicks seen:", tostring(getgenv().RAIN_CLICKS or 0))
+    print("last click:", tostring(getgenv().RAIN_LASTCLICK or "none"))
+    local f = getgenv().aztup and getgenv().aztup.features
+    local mod = f and (f["visuals/leaderboard_spectate"] or f.leaderboard_spectate)
+    print("module loaded:", tostring(mod ~= nil))
+    local cam = workspace.CurrentCamera
+    print("camera subject:", tostring(cam and cam.CameraSubject))
+    local lp = getgenv().local_player
+    print("self humanoid:", tostring(lp and lp.humanoid))
+end
 
 -- on-demand keyhandler/remote diagnostics (parry execution depends on these)
 getgenv().RAIN_KHDIAG = function()

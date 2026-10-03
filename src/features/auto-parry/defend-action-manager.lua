@@ -9,7 +9,6 @@ local function live_kh()
     return KeyHandler
 end
 
-<<<<<<< HEAD
 -- restore: bundle Auto Defense execution gaps (QueuedBlocking 25926-26150,
 -- valid() 77593-77702, StartBlock 75267-75269)
 local unblock_jitter = Random.new()
@@ -31,8 +30,6 @@ local function has_iframes()
     return false
 end
 
-=======
->>>>>>> 1bebd1446686eacda3f2e1b7dedee8c076312613
 local DefendActionManager = {} do
     DefendActionManager.actions_to_play_through = {};
     DefendActionManager.currently_handling = {};
@@ -92,6 +89,15 @@ end
     function DefendActionManager:add_action(mob, action_type, when, seq_tag_or_other)
         self._action_seq_counter = (self._action_seq_counter or 0) + 1
         getgenv().RAIN_LASTQ = { type = action_type, t = tick() };
+        -- restore: passive on-screen telemetry (no console needed).
+        -- "[AP] queued block" = decision reached the queue.
+        if action_type == "block" then
+            getgenv().__rain_nq = getgenv().__rain_nq or 0
+            if tick() - getgenv().__rain_nq > 3 then
+                getgenv().__rain_nq = tick()
+                pcall(function() setthreadidentity(8) Logger:short_notify("[AP] queued block") end)
+            end
+        end
 
         table.insert(self.actions_to_play_through, {
             mob = mob,
@@ -293,6 +299,12 @@ elseif aztup_options.fallbacks.Value.Block then
                 getgenv().block_call(true)
             end;
         
+            -- restore: "[AP] BLOCK FIRED" = remote actually sent.
+            getgenv().__rain_nf = getgenv().__rain_nf or 0
+            if tick() - getgenv().__rain_nf > 5 then
+                getgenv().__rain_nf = tick()
+                pcall(function() setthreadidentity(8) Logger:short_notify("[AP] BLOCK FIRED") end)
+            end
             return self.block:FireServer()
         end;
     
