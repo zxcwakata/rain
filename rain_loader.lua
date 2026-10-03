@@ -23,7 +23,7 @@ local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
 -- If it prints nil or an older tag, you are executing a STALE copy
 -- (old file contents, executor cache, or a duplicate in autoexec folder).
-getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-3"
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-4"
 print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
 
 if not game:IsLoaded() then
@@ -551,6 +551,23 @@ if not env.local_player then -- fallback tracker (no action_tracker dep)
 end
 local local_player = env.local_player
 env.general = brequire("@src/utility/deepwoken/general_utilitys") or general
+-- restore: real ping. The boot Latency stub returns 0 forever, which shifts
+-- every parry wait late by a full RTT. Mutated IN PLACE so chunks holding the
+-- stub table (stale global snapshots) get live values too.
+do
+    local ok, lat = pcall(require, "@src/utility/latency")
+    if ok and type(lat) == "table" then
+        getgenv().Latency = lat
+        if type(Latency) == "table" and Latency ~= lat then
+            pcall(function()
+                Latency.get_ping = lat.get_ping
+                Latency.half_ping = lat.half_ping
+            end)
+        else
+            Latency = lat
+        end
+    end
+end
 env.InstanceWatcher = brequire("@src/utility/instancewatcher")
 env.BindableFunction = brequire("@src/utility/bindablefunction")
 env.Markers = nil

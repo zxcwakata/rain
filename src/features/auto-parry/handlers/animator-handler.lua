@@ -1496,14 +1496,46 @@ end;
                         fire = false note("no_danger")
                     end
                 end
+                -- restore: post-parry punish window. Right after our successful
+                -- parry the enemy plays stagger anims (unknown ids, Action, close,
+                -- targeting us) — re-blocking them locks us through the punish
+                -- window and we eat the riposte. Skip 0.7s past ParryCool fade.
                 if fire then
-                    DefendActionManager:queue_generic_parry_task(self.entity, 0.4)
+                    local er0 = getgenv().EffectReplicator or EffectReplicator
+                    local ok_pc, pc = pcall(function() return er0:FindEffect("ParryCool") end)
+                    if ok_pc and pc then getgenv().__rain_lastpc = tick() end
+                    if getgenv().__rain_lastpc and tick() - getgenv().__rain_lastpc < 0.7 then
+                        fire = false note("post_parry_window")
+                    end
+                end
+                if fire then
+                    -- restore: dodge variation for unknown anims (fixes "only
+                    -- parries, never dodges" — the fallback previously knew only
+                    -- block). Uses the M1 force-dodge chance + Humanization flag.
+                    local queued_how = "block"
+                    local want_dodge = false
+                    if aztup.flags.ap_randomization then
+                        local chance = aztup.flags.parry_to_dodge_chance_m1 or 0
+                        if math.random() * 100 < chance then want_dodge = true end
+                    end
+                    if want_dodge then
+                        local can = (not aztup.flags.only_convert_dodge_if_possible)
+                            or (local_player.tracker and local_player.tracker:can_dodge())
+                        if can then
+                            DefendActionManager:queue_generic_dodge_task(self.entity)
+                            queued_how = "dodge"
+                            why = "queued_dodge"
+                        end
+                    end
+                    if queued_how == "block" then
+                        DefendActionManager:queue_generic_parry_task(self.entity, 0.75)
+                    end
                     getgenv().__rain_nr = getgenv().__rain_nr or 0
                     if tick() - getgenv().__rain_nr > 3 then
                         getgenv().__rain_nr = tick()
                         pcall(function()
                             setthreadidentity(8)
-                            Logger:short_notify(string.format("[AP] react %s %.0f", tostring(self.entity and self.entity.Name):sub(1, 18), dist or -1))
+                            Logger:short_notify(string.format("[AP] react-%s %s %.0f", queued_how, tostring(self.entity and self.entity.Name):sub(1, 14), dist or -1))
                         end)
                     end
                 end
