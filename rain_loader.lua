@@ -18,7 +18,13 @@
 
 ]]
 
-local BASE_URL = "https://raw.githubusercontent.com/crownedwithbloodytears/project-rain-oss-master/main/"
+local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
+
+-- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
+-- If it prints nil or an older tag, you are executing a STALE copy
+-- (old file contents, executor cache, or a duplicate in autoexec folder).
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-1"
+print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
 
 if not game:IsLoaded() then
     repeat task.wait() until game:IsLoaded()
@@ -831,6 +837,28 @@ getgenv().RAIN_FXSPY = function()
     print("[fxspy] installed")
 end
 
+-- animation coverage dump: which enemy swings were seen and which lack data.
+-- Fight mobs ~30s, then run RAIN_ANIMDUMP(). "MISS" = no timing data (unparryable
+-- by design until data added); "HIT" + no parry = filters/execution, say so.
+getgenv().RAIN_ANIMDUMP = function()
+    local t = getgenv().RAIN_ANIMS
+    if not t or not next(t) then
+        print("[animdump] empty — handler saw no swings (auto_parry on? enemies near?)")
+        return
+    end
+    local rows = {}
+    for id, e in pairs(t) do
+        local who = {}
+        for w in pairs(e.who) do table.insert(who, w) end
+        table.insert(rows, { n = e.n, line = string.format("%s x%d id=%s name=[%s] from=%s",
+            e.has_data and "HIT " or "MISS", e.n, tostring(id), tostring(e.nm or "?"), table.concat(who, ",")) })
+    end
+    table.sort(rows, function(a, b) return a.n > b.n end)
+    for i = 1, math.min(#rows, 30) do print("[animdump] " .. rows[i].line) end
+    print(string.format("[animdump] %d distinct anims", #rows))
+end
+getgenv().RAIN_ANIMCLR = function() getgenv().RAIN_ANIMS = {} print("[animdump] cleared") end
+
 -- on-demand keyhandler/remote diagnostics (parry execution depends on these)
 getgenv().RAIN_KHDIAG = function()
     local kh = getgenv().KeyHandler
@@ -856,7 +884,19 @@ task.spawn(function()
             return require(m)
         end)
         if ok and mod then
+            -- fxspy proved chunks can hold a STALE global snapshot (tracker saw
+            -- the boot stub while getgenv() already had the real module, so
+            -- can_parry stayed false with a sword in hand). Upgrade in place:
+            -- mutate the stub table so every stale reference delegates live.
+            local old = getgenv().EffectReplicator
             getgenv().EffectReplicator = mod
+            EffectReplicator = mod
+            if type(old) == "table" and old ~= mod then
+                pcall(function()
+                    for k, v in pairs(mod) do old[k] = v end
+                    setmetatable(old, { __index = mod })
+                end)
+            end
             warn("[restore] real EffectReplicator bound")
             break
         end

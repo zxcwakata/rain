@@ -1,6 +1,35 @@
 local Signal = require("@src/utility/signal");
 local Keybinds = base_require(game:GetService("ReplicatedStorage"):WaitForChild("KeyBinds"));
 
+-- restore: live KeyHandler lookup (see action_tracker.lua — stale snapshots)
+local function live_kh()
+    local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+    local kh = gg and gg.KeyHandler or nil
+    if type(kh) == "table" then return kh end
+    return KeyHandler
+end
+
+-- restore: bundle Auto Defense execution gaps (QueuedBlocking 25926-26150,
+-- valid() 77593-77702, StartBlock 75267-75269)
+local unblock_jitter = Random.new()
+local function live_er()
+    local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+    local er = gg and gg.EffectReplicator or nil
+    if type(er) == "table" then return er end
+    return EffectReplicator
+end
+-- bundle UseIFrames (75553-75587): never parry/dodge while i-frames are up
+local IFRAME_EFFECTS = { "Immortal", "DodgeFrame", "ParryFrame", "Ghost" }
+local function has_iframes()
+    local er = live_er()
+    if not er then return false end
+    for _, name in IFRAME_EFFECTS do
+        local ok, has = pcall(function() return er:HasEffect(name) end)
+        if ok and has then return true end
+    end
+    return false
+end
+
 local DefendActionManager = {} do
     DefendActionManager.actions_to_play_through = {};
     DefendActionManager.currently_handling = {};
@@ -19,14 +48,14 @@ local DefendActionManager = {} do
             return        
 end
 
-        local remote = KeyHandler:get_cache("Block");
+        local remote = live_kh():get_cache("Block");
 
         if remote and not remote:IsDescendantOf(local_player.character) then
             remote = nil
         end
         
         if not remote then
-            remote = KeyHandler:get_key("Block")
+            remote = live_kh():get_key("Block")
         end
         
         if not remote then return end 
@@ -43,14 +72,14 @@ end
             return        
 end
 
-        local remote = KeyHandler:get_cache("Unblock");
+        local remote = live_kh():get_cache("Unblock");
 
         if remote and not remote:IsDescendantOf(local_player.character) then
             remote = nil
         end
         
         if not remote then
-            remote = KeyHandler:get_key("Unblock")
+            remote = live_kh():get_key("Unblock")
         end
         
         if not remote then return end 
@@ -100,12 +129,13 @@ end
     end;
 
     local random = Random.new();
+    -- restore: bundle unblock hold jitter 0.075-0.115s (QueuedBlocking 25959-25961)
     function DefendActionManager:queue_generic_parry_task_no_convert(mob)
         self._current_parry_seq = (self._current_parry_seq or 0) + 1
         local seq = self._current_parry_seq
 
         self:add_action(mob, "block", tick(), seq);
-        self:add_action(mob, "unblock", tick() + 0.1, seq);
+        self:add_action(mob, "unblock", tick() + 0.1 + unblock_jitter:NextNumber(0.075, 0.115), seq);
     end;
     
     function DefendActionManager:queue_generic_parry_task(mob, t)
@@ -113,7 +143,7 @@ end
         local seq = self._current_parry_seq
 
         self:add_action(mob, "block", tick(), seq);
-        self:add_action(mob, "unblock", tick() + (t or 0.1), seq);
+        self:add_action(mob, "unblock", tick() + (t or 0.1) + unblock_jitter:NextNumber(0.075, 0.115), seq);
     end;
 
     function DefendActionManager:queue_generic_dodge_task(mob)
@@ -206,6 +236,14 @@ end
 
     LPH_NO_VIRTUALIZE(function()
         function DefendActionManager:defend_action_block(action, dont_pass)
+            -- restore: bundle gates — i-frames (75553-75587), Action/Knocked (26048-26050)
+            if has_iframes() then return end
+            do
+                local er = live_er()
+                local ok_a, act = pcall(function() return er:HasEffect("Action") end)
+                local ok_k, kn = pcall(function() return er:HasEffect("Knocked") end)
+                if (ok_a and act) or (ok_k and kn) then return end
+            end
         
             if aztup.flags.ap_randomization then
                 if math.random() < aztup.flags.parry_to_fallback_chance / 100 then
@@ -257,9 +295,11 @@ elseif aztup_options.fallbacks.Value.Block then
     
     
         function DefendActionManager:defend_action_dodge(action)
+            -- restore: bundle UseIFrames (75585-75587)
+            if has_iframes() then return end
             local type = action.mob.Name:sub(1, 1) == "." and "pve_" or "pvp_"
             if aztup.flags[type .. "blatant_roll"] and not action.full then
-                KeyHandler:get_key("Dodge"):FireServer("roll", nil, nil, false);
+                live_kh():get_key("Dodge"):FireServer("roll", nil, nil, false);
             
                 if aztup.flags[type .. "blatant_roll_with_anims"] then
                     task.spawn(function() 
@@ -310,7 +350,7 @@ elseif aztup_options.fallbacks.Value.Block then
                 end
             
                 return task.delay(.15, function()
-                    KeyHandler:get_key("StopDodge"):FireServer({
+                    live_kh():get_key("StopDodge"):FireServer({
                         W = false,
                         Right = true,
                         S = false,

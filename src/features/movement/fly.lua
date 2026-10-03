@@ -121,26 +121,24 @@ end;
     
     
 
-    local direction = Vector3.new();
-    local direction_keys = {
-        [Enum.KeyCode.W] = workspace.CurrentCamera.CFrame.LookVector.Unit,
-        [Enum.KeyCode.S] = -workspace.CurrentCamera.CFrame.LookVector.Unit,
-        [Enum.KeyCode.A] = Vector3.new(workspace.CurrentCamera.CFrame.LookVector.Unit.Z, 0, -workspace.CurrentCamera.CFrame.LookVector.Unit.X),
-        [Enum.KeyCode.D] = Vector3.new(-workspace.CurrentCamera.CFrame.LookVector.Unit.Z, 0, workspace.CurrentCamera.CFrame.LookVector.Unit.X),
-        [Enum.KeyCode.Space] = Vector3.new(0, 1, 0),
-        [Enum.KeyCode.LeftControl] = Vector3.new(0, -1, 0),
-    }
-
-    for key, vec in pairs(direction_keys) do
-        if services.UserInputService:IsKeyDown(key) then
-            direction = direction + vec;
-        end
-    end
-
-    if direction.Magnitude > 0 then
-        direction = direction.Unit;
+    -- restore: bundle Movement.updateFlyHack port (camera-rotated XZ move vector,
+    -- Space = +Y boost). Kept rain extras: LeftControl descend, pull_to_ground.
+    local cam = workspace.CurrentCamera
+    local flyVelocity = Vector3.zero
+    if cam then
+        -- Heliodar fly fix (bundle 92108-92111)
+        local helio = local_player.root_part:FindFirstChild("HelioFlight")
+        if helio then pcall(function() helio:Destroy() end) end
+        local uis = services.UserInputService
+        local move = Vector3.zero
+        if uis:IsKeyDown(Enum.KeyCode.W) then move += Vector3.new(0, 0, -1) end
+        if uis:IsKeyDown(Enum.KeyCode.S) then move += Vector3.new(0, 0, 1) end
+        if uis:IsKeyDown(Enum.KeyCode.A) then move += Vector3.new(-1, 0, 0) end
+        if uis:IsKeyDown(Enum.KeyCode.D) then move += Vector3.new(1, 0, 0) end
+        if move.Magnitude > 0 then move = move.Unit end
+        flyVelocity = cam.CFrame:VectorToWorldSpace(move)
     else
-        direction = Vector3.zero;
+        flyVelocity = Vector3.zero
     end
 
     for _, bv in local_player.character:QueryDescendants("BasePart > BodyVelocity") do
@@ -152,6 +150,16 @@ end;
 		services.CollectionService:AddTag(current_bv, 'AllowedBM');
 	end
     
+    local uis = services.UserInputService
+    if uis:IsKeyDown(Enum.KeyCode.Space) then
+        flyVelocity += Vector3.new(0, 1, 0)
+    end
+    if uis:IsKeyDown(Enum.KeyCode.LeftControl) then
+        flyVelocity += Vector3.new(0, -1, 0)
+    end
+    if flyVelocity.Magnitude > 0 then
+        flyVelocity = flyVelocity.Unit
+    end
     local speed = aztup.flags.fly_speed;
     local root_attachment = local_player.root_part:FindFirstChild("RootAttachment");
     local align_position = root_attachment and root_attachment:FindFirstChild("AlignPosition");
@@ -172,19 +180,19 @@ end;
             local close_to_ground = collision_utils:Raycast(local_player.root_part.Position, Vector3.new(0, -7.5, 0), collision_utils.solidParams);
             local getting_close_to_ground = collision_utils:Raycast(local_player.root_part.Position, Vector3.new(0, -25, 0), collision_utils.solidParams);
 
-            direction = direction + Vector3.new(0, close_to_ground and -1 or (getting_close_to_ground and -0.75 or -0.3), 0);
+            flyVelocity = flyVelocity + Vector3.new(0, close_to_ground and -1 or (getting_close_to_ground and -0.75 or -0.3), 0);
         end;
     end
 
     local ground_controller_should_be_used = false;
-    current_bv.MaxForce = Vector3.new(1000000, 1000000, 1000000);
+    current_bv.MaxForce = Vector3.new(9e9, 9e9, 9e9);
     if aztup.flags.ignore_ground and not general:in_air() and not EffectReplicator:HasEffect("Swimming") and not aztup.flags.noclip then
-        current_bv.MaxForce = Vector3.new(1000000, 0, 1000000);
+        current_bv.MaxForce = Vector3.new(9e9, 0, 9e9);
         ground_controller_should_be_used = true;
     end
 
 	current_bv.Parent = local_player.root_part;
-    current_bv.Velocity = direction * speed; 
+    current_bv.Velocity = flyVelocity * speed; 
     
     local ground_sensor = local_player.root_part:FindFirstChild("GroundSensor")
     if not ground_sensor then

@@ -870,7 +870,7 @@ return {
 
         task.delay(0.2 - Latency:get_ping(), function()
             local conn = thrown.ChildAdded:Connect(function(part)
-                if EffectReplicator:FindEffect("ParryCool") or not local_player.tracker:can_parry() then return end
+                if (getgenv().EffectReplicator or EffectReplicator):FindEffect("ParryCool") or not local_player.tracker:can_parry() then return end
                 if part.Name == "ShadowSlash" then
                     num += 1;
                     if num == 2 then return end
@@ -2030,7 +2030,10 @@ return {
     allow_parry_to_block = false,
 
     run = function(action)
-        if not weapon.type or not weapon.length then return end
+        -- restore: unarmed entities (fists, mobs, dummies) have no HandWeapon,
+        -- Weapon.data returns nil and every generic run silently skipped.
+        -- Fall back to fist stats so the Fist branches below actually run.
+        if not weapon.type or not weapon.length then weapon = { type = "Fist", length = 3, ss = 1 } end
         
         task.wait(((0.163 / track.Speed) + 0.1) - Latency:get_ping());
         while self:is_playing() and task.wait(0.035) do
@@ -2074,7 +2077,10 @@ return {
     allow_parry_to_block = false,
 
     run = function(action)
-        if not weapon.type or not weapon.length then return end
+        -- restore: unarmed entities (fists, mobs, dummies) have no HandWeapon,
+        -- Weapon.data returns nil and every generic run silently skipped.
+        -- Fall back to fist stats so the Fist branches below actually run.
+        if not weapon.type or not weapon.length then weapon = { type = "Fist", length = 3, ss = 1 } end
 
         action.base_and_predict = true;
         action.predict = true;
@@ -2338,7 +2344,10 @@ return {
     allow_parry_to_block = false,
 
     run = function(action)
-        if not weapon.type or not weapon.length then return end
+        -- restore: unarmed entities (fists, mobs, dummies) have no HandWeapon,
+        -- Weapon.data returns nil and every generic run silently skipped.
+        -- Fall back to fist stats so the Fist branches below actually run.
+        if not weapon.type or not weapon.length then weapon = { type = "Fist", length = 3, ss = 1 } end
 
         action.base_and_predict = true;
         action.predict = true;
@@ -2547,7 +2556,10 @@ return {
     allow_parry_to_block = false,
 
     run = function(action)
-        if not weapon.type or not weapon.length then return end
+        -- restore: unarmed entities (fists, mobs, dummies) have no HandWeapon,
+        -- Weapon.data returns nil and every generic run silently skipped.
+        -- Fall back to fist stats so the Fist branches below actually run.
+        if not weapon.type or not weapon.length then weapon = { type = "Fist", length = 3, ss = 1 } end
 
         action.base_and_predict = true;
         action.predict = true;
@@ -3965,7 +3977,10 @@ return {
     allow_parry_to_roll = true,
 
     run = function(action)
-        if not weapon.type or not weapon.length then return end
+        -- restore: unarmed entities (fists, mobs, dummies) have no HandWeapon,
+        -- Weapon.data returns nil and every generic run silently skipped.
+        -- Fall back to fist stats so the Fist branches below actually run.
+        if not weapon.type or not weapon.length then weapon = { type = "Fist", length = 3, ss = 1 } end
 
         local hrp = defender.entity:FindFirstChild("HumanoidRootPart")
         local vel = hrp and Vector3.new(hrp.AssemblyLinearVelocity.X, 0, hrp.AssemblyLinearVelocity.Z).Magnitude or 0

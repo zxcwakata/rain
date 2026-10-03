@@ -9,6 +9,47 @@ local defaultTextColor = Color3.new(1, 1, 1)
 feature.conns = {};
 feature.unique_id = services.HttpService:GenerateGUID(); 
 
+-- restore: bundle Player List Spectating port (stream-on-demand, notifies,
+-- single streaming task, generation-guarded subject loop).
+local function fetch_name(plr: Player): string
+    return string.format("(%s) %s", plr:GetAttribute("CharacterName") or "Unknown Character Name", plr.Name)
+end
+
+local spectate_gen = 0
+local function start_subject_loop(label: TextLabel, get_subject)
+    spectate_gen += 1
+    local my_gen = spectate_gen
+    task.spawn(function()
+        while spectate_gen == my_gen and currentSpectatedLabel == label do
+            if not local_player.instance:HasTag("ForcedSubject") then
+                local_player.instance:AddTag("ForcedSubject")
+            end
+            local ok, subject = pcall(get_subject)
+            if ok and subject then
+                camera.CameraSubject = subject
+            end
+            task.wait();
+        end
+    end)
+end
+
+local stream_last = 0
+local function ensure_stream_conn(self)
+    if self.stream_conn then return end
+    self.stream_conn = services.RunService.RenderStepped:Connect(function()
+        if tick() - stream_last < 0.25 or not currentSpectatedLabel then return end
+        stream_last = tick();
+        local subject = workspace.CurrentCamera.CameraSubject;
+        if subject == local_player.humanoid or not subject then return end
+        local root = (subject:IsA("BasePart") and subject) or subject:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        pcall(function()
+            local_player.instance:RequestStreamAroundAsync(root.Position, 0.1);
+        end);
+    end);
+    table.insert(self.conns, self.stream_conn)
+end
+
 
 local function is_player_frame_map(map): boolean
     if type(map) ~= "table" then return false end
@@ -116,7 +157,11 @@ function feature:handle(frame: Frame)
         end
 
         local plr = get_player_from_frame(frame)
-        if not plr or not plr.Character then
+        if not plr then
+            return
+        end
+        if not plr.Character then
+            Logger:notify_sound("Failed to spectate", fetch_name(plr), "their character does not exist.")
             return
         end
 
@@ -138,8 +183,26 @@ function feature:handle(frame: Frame)
             return
         end
 
-        local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+        -- restore: bundle stream-on-demand (MapPos + missing HRP). WORKS for
+        -- streamed-out players: request the area, user clicks again.
+        local char = plr.Character
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            local map_pos = char:GetAttribute("MapPos")
+            if map_pos then
+                pcall(function()
+                    local_player.instance:RequestStreamAroundAsync(map_pos, 0.1)
+                end)
+                Logger:notify_sound("Requesting stream for", fetch_name(plr), "try again later.")
+            else
+                Logger:notify_sound("Failed to spectate", fetch_name(plr), "they are not loaded in.")
+            end
+            return
+        end
+
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then
+            Logger:notify_sound("Failed to spectate", fetch_name(plr), "no humanoid.")
             return
         end
 
@@ -150,42 +213,19 @@ function feature:handle(frame: Frame)
         local_player.instance:AddTag("ForcedSubject")
         player_label.TextColor3 = Library.AccentColor
         currentSpectatedLabel = player_label
+        ensure_stream_conn(self)
+        Logger:notify_sound("Started spectating", fetch_name(plr))
 
-        while currentSpectatedLabel == player_label do
-            if not local_player.instance:HasTag("ForcedSubject") then
-                local_player.instance:AddTag("ForcedSubject")
-            end
-            camera.CameraSubject = humanoid
-
-            task.wait();
-        end
-    end);
-
-    local last_update = tick();
-    local streaming_update_conn = services.RunService.RenderStepped:Connect(function()
-        if tick() - last_update < 0.25 or not currentSpectatedLabel then
-            return        
-end;
-
-        last_update = tick();
-        
-        local subject = workspace.CurrentCamera.CameraSubject;
-        if subject == local_player.humanoid or not subject then return end
-        
-        pcall(function()
-            local_player.instance:RequestStreamAroundAsync(subject.RootPart.Position, 1000);
-        end);
+        start_subject_loop(player_label, function() return humanoid end)
     end);
 
     table.insert(self.conns, mouse_enter)
     table.insert(self.conns, mouse_leave)
     table.insert(self.conns, input_began)
-    table.insert(self.conns, streaming_update_conn)
 
     frame_maid:give_task(mouse_enter);
     frame_maid:give_task(mouse_leave);
     frame_maid:give_task(input_began);
-    frame_maid:give_task(streaming_update_conn);
     frame_maid:give_task(frame.AncestryChanged:Connect(function()
         if not frame:IsDescendantOf(local_player.instance) then
             frame_maid:do_cleaning();
@@ -196,6 +236,7 @@ end;
 end
 
 function feature:stop_spectate()
+    spectate_gen += 1
     if currentSpectatedLabel then
         currentSpectatedLabel.TextColor3 = defaultTextColor
     end;
@@ -203,6 +244,7 @@ function feature:stop_spectate()
 
     local_player.instance:RemoveTag("ForcedSubject")
     camera.CameraSubject = local_player.humanoid;
+    Logger:notify_sound("Reset spectating camera subject.")
 end;
 
 function feature:force_spectate(query: string | Player)
@@ -243,17 +285,10 @@ end;
     local_player.instance:AddTag("ForcedSubject")
     target_label.TextColor3 = Library.AccentColor
     currentSpectatedLabel = target_label
+    ensure_stream_conn(self)
+    Logger:notify_sound("Started spectating", fetch_name(target_player))
 
-    task.spawn(function()
-        while currentSpectatedLabel == target_label do
-            if not local_player.instance:HasTag("ForcedSubject") then
-                local_player.instance:AddTag("ForcedSubject")
-            end
-            camera.CameraSubject = humanoid
-
-            task.wait();
-        end
-    end)
+    start_subject_loop(target_label, function() return humanoid end)
 end;
 
 function feature:disable()
@@ -264,6 +299,7 @@ function feature:disable()
         conn:Disconnect();
     end;
     table.clear(self.conns);
+    self.stream_conn = nil;
 
     if self.last_conn then
         self.last_conn:Disconnect();
