@@ -14,7 +14,7 @@
 local IMAGE_ID = "" -- e.g. "rbxassetid://123456789"
 local IMAGE_PATH = "RainBanner.png" -- e.g. "RainBanner.png" (in executor workspace folder)
 local IMAGE_URL = "" -- e.g. "https://.../banner.png"
-local BANNER_W, BANNER_H = 550, 100
+local BANNER_W, BANNER_H = 100, 756
 
 local function resolve_image()
     -- restore: executor globals (getcustomasset/isfile/writefile) may be
