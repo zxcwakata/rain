@@ -70,5 +70,10 @@ end
 	    end)())
 
         aztup.auto_loaded = true;
+
+        -- restore: clickable banner above the main window (src/ui/menu_banner.lua)
+        task.spawn(xpcall, function()
+            require("@src/ui/menu_banner").initialize()
+        end, warn);
     end;
 } 
