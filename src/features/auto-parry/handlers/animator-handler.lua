@@ -165,6 +165,26 @@ return LPH_NO_VIRTUALIZE(function()
 	    mobsAnims["106886961189983"] = true;
     end;
 
+    -- restore: movement-anim id set (idle/walk/run/jump). The reactive fallback
+    -- must never fire on locomotion — only on Action-priority tracks.
+    local movementAnims = {};
+    do
+        local ok, folder = pcall(function()
+            return services.ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Anims"):WaitForChild("Movement")
+        end)
+        if ok and folder then
+            local ok2, desc = pcall(function() return folder:GetDescendants() end)
+            if ok2 and desc then
+                for _, v in desc do
+                    if v:IsA("Animation") then
+                        local num = tostring(v.AnimationId or ""):match("%d+")
+                        if num then movementAnims[num] = true end
+                    end
+                end
+            end
+        end
+    end
+
     local last_payback_delay_time = 0;
 
     local fast_timing_lookup_table = {};
@@ -1418,9 +1438,30 @@ end;
                 local why = "queued"
                 local function note(r) why = r end
                 local fire = true
-                -- restore: NO Looped exclusion — AnimationPlayed fires once per play
-                -- even for looped tracks, and current M1s may be flagged looped.
-                -- Worst case of a stray trigger is one 0.4s block.
+                -- restore: only Action-priority tracks. Idle/Movement/Core are
+                -- locomotion/emotes (incl. mob aggro idles) — never attacks.
+                -- This stops blocks "without reason" when a mob just aggros.
+                if fire then
+                    local ok_p, prio = pcall(function() return track.Priority end)
+                    if not ok_p or not prio or prio.Value < Enum.AnimationPriority.Action.Value then
+                        fire = false note("not_action_prio")
+                    end
+                end
+                -- restore: skip locomotion ids (walk/run/idle/jump from the game
+                -- Movement folder) even if they arrive with Action priority.
+                if fire then
+                    local num = tostring(track.Animation and track.Animation.AnimationId or ""):match("%d+")
+                    if num and movementAnims[num] then fire = false note("movement_anim") end
+                end
+                -- restore: mobs expose a Target ObjectValue — react only when it
+                -- targets us (or is absent). No more blocks at someone else's fight.
+                if fire and self.entity and self.entity.Name:sub(1, 1) == "." then
+                    local tgt = self.entity:FindFirstChild("Target")
+                    if tgt and tgt.Value and local_player.character
+                        and tgt.Value ~= local_player.character then
+                        fire = false note("not_targeting_us")
+                    end
+                end
                 if fire and not aztup.flags.auto_parry then fire = false note("flag_off") end
                 if fire and aztup.flags.parry_unknown_anims == false then fire = false note("disabled") end
                 if fire and (not self.entity or not local_player.character) then fire = false note("no_char") end
@@ -1444,6 +1485,9 @@ end;
                     lim = self.is_player
                         and (aztup.flags.dont_process_players_over_studs or 60)
                         or (aztup.flags.dont_process_mobs_over_studs or 60)
+                    -- restore: fallback is reactive (no windup data), so keep it
+                    -- close-range only — distant crowds must not hold your block.
+                    if lim > 30 then lim = 30 end
                     if dist > lim then fire = false note(string.format("dist=%.0f>%.0f", dist, lim)) end
                 end
                 if fire then

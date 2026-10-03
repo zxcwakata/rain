@@ -137,6 +137,7 @@ function feature:handle(frame: Frame)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
             return
         end
+        do local gg = getgenv() gg.RAIN_CLICKS = (gg.RAIN_CLICKS or 0) + 1 end
 
         -- restore: handler may fire before lazy fill registers the module
         do local __f = aztup.features.leaderboard_spectate if __f == nil or __f.unique_id ~= self.unique_id then return end end
@@ -153,9 +154,11 @@ function feature:handle(frame: Frame)
 
         local plr = get_player_from_frame(frame)
         if not plr then
+            getgenv().RAIN_LASTCLICK = "map_miss(frame not in player-frame map)"
             return
         end
         if not plr.Character then
+            getgenv().RAIN_LASTCLICK = "no_character"
             Logger:notify_sound("Failed to spectate", fetch_name(plr), "their character does not exist.")
             return
         end
@@ -174,6 +177,7 @@ function feature:handle(frame: Frame)
         end
 
         if currentSpectatedLabel == player_label then
+            getgenv().RAIN_LASTCLICK = "toggled_off"
             self:stop_spectate();
             return
         end
@@ -188,8 +192,10 @@ function feature:handle(frame: Frame)
                 pcall(function()
                     local_player.instance:RequestStreamAroundAsync(map_pos, 0.1)
                 end)
+                getgenv().RAIN_LASTCLICK = "stream_requested"
                 Logger:notify_sound("Requesting stream for", fetch_name(plr), "try again later.")
             else
+                getgenv().RAIN_LASTCLICK = "not_loaded_in"
                 Logger:notify_sound("Failed to spectate", fetch_name(plr), "they are not loaded in.")
             end
             return
@@ -197,6 +203,7 @@ function feature:handle(frame: Frame)
 
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then
+            getgenv().RAIN_LASTCLICK = "no_humanoid"
             Logger:notify_sound("Failed to spectate", fetch_name(plr), "no humanoid.")
             return
         end
@@ -209,6 +216,7 @@ function feature:handle(frame: Frame)
         player_label.TextColor3 = Library.AccentColor
         currentSpectatedLabel = player_label
         ensure_stream_conn(self)
+        getgenv().RAIN_LASTCLICK = "spectating:" .. tostring(plr.Name)
         Logger:notify_sound("Started spectating", fetch_name(plr))
 
         start_subject_loop(player_label, function() return humanoid end)
