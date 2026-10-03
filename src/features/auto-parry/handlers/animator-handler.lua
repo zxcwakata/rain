@@ -459,28 +459,56 @@ end
     end
 
     function AnimatorHandler:in_hitbox_with_pos(root_pos: CFrame, enemy_pos: CFrame, hitbox: Vector3, offset: CFrame, hidden: boolean?)
-        return general:in_hitbox_with_pos(root_pos, enemy_pos, hitbox, offset, hidden, self.ball)
+        local ok, r = pcall(function()
+            return general:in_hitbox_with_pos(root_pos, enemy_pos, hitbox, offset, hidden, self.ball)
+        end)
+        -- restore: the boot `general` stub answers every method with nil. A nil
+        -- result here (not false) means the module never loaded — and every
+        -- caller treats nil as "outside hitbox" and SILENTLY skips the action.
+        -- Fall back to a generous distance check instead of dropping the parry.
+        if ok and r ~= nil then return r end
+        local a_ok, a_pos = pcall(function() return root_pos.Position end)
+        local b_ok, b_pos = pcall(function() return enemy_pos.Position end)
+        if not (a_ok and b_ok and a_pos and b_pos) then return false end
+        local reach = 6
+        if typeof(hitbox) == "Vector3" then
+            reach = math.max(hitbox.X, hitbox.Y, hitbox.Z) * 0.75 + 6
+        end
+        return (a_pos - b_pos).Magnitude <= reach
     end
 
 
     local position_prediction_service = require("@src/features/auto-parry/services/position_prediction_service");
     function AnimatorHandler:in_hitbox(hitbox: Vector3, offset: CFrame, hidden: boolean?, predict, predict_time, predict_rotation, base_predict)  
-        local predicted_pos_us = position_prediction_service.our_predicted_position(); 
-        local predicted_other_pos, dbg = position_prediction_service.predict(self.player, (Latency:get_ping() + (predict_time and typeof(predict_time) == "number" and predict_time or 0)) + 0.5, {
-            predict_rotation = predict_rotation
-        })
+        -- restore: same stub-nil guard as in_hitbox_with_pos (see above).
+        -- Any error/nil from prediction or general => distance fallback.
+        local function safe_original()
+            local predicted_pos_us = position_prediction_service.our_predicted_position(); 
+            local predicted_other_pos, dbg = position_prediction_service.predict(self.player, (Latency:get_ping() + (predict_time and typeof(predict_time) == "number" and predict_time or 0)) + 0.5, {
+                predict_rotation = predict_rotation
+            })
 
-        local other_pos = predicted_other_pos or self.entity:FindFirstChild("HumanoidRootPart") and self.entity.HumanoidRootPart.CFrame or CFrame.new();
+            local other_pos = predicted_other_pos or self.entity:FindFirstChild("HumanoidRootPart") and self.entity.HumanoidRootPart.CFrame or CFrame.new();
 
-        if not predict then
-            return general:in_hitbox_with_pos(local_player.root_part.CFrame, self.entity.HumanoidRootPart.CFrame, hitbox, offset, hidden, self.ball)
-        end;
+            if not predict then
+                return general:in_hitbox_with_pos(local_player.root_part.CFrame, self.entity.HumanoidRootPart.CFrame, hitbox, offset, hidden, self.ball)
+            end;
 
-        local predicted = general:in_hitbox_with_pos(predicted_pos_us, other_pos, hitbox, offset, hidden, self.ball, Color3.fromRGB(205, 119, 255), Color3.fromRGB(255, 165, 130));
-        local base = base_predict and general:in_hitbox_with_pos(local_player.root_part.CFrame, self.entity.HumanoidRootPart.CFrame, hitbox, offset, hidden, self.ball);
+            local predicted = general:in_hitbox_with_pos(predicted_pos_us, other_pos, hitbox, offset, hidden, self.ball, Color3.fromRGB(205, 119, 255), Color3.fromRGB(255, 165, 130));
+            local base = base_predict and general:in_hitbox_with_pos(local_player.root_part.CFrame, self.entity.HumanoidRootPart.CFrame, hitbox, offset, hidden, self.ball);
 
-        return base or predicted 
-        
+            return base or predicted 
+        end
+        local ok, r = pcall(safe_original)
+        if ok and r ~= nil then return r end
+        local lp_rp = local_player and local_player.root_part
+        local e_rp = self.entity and self.entity:FindFirstChild("HumanoidRootPart")
+        if not (lp_rp and e_rp) then return false end
+        local reach = 6
+        if typeof(hitbox) == "Vector3" then
+            reach = math.max(hitbox.X, hitbox.Y, hitbox.Z) * 0.75 + 6
+        end
+        return (lp_rp.Position - e_rp.Position).Magnitude <= reach
     end;
     local tasks = 0;
 
@@ -1356,8 +1384,15 @@ end;
             local key = tostring(id)
             local e = gg.RAIN_ANIMS[key]
             if not e then
-                e = { n = 0, has_data = false, who = {} }
+                e = { n = 0, has_data = false, who = {}, nm = nil }
                 gg.RAIN_ANIMS[key] = e
+                -- resolve marketplace name once (tells M1s apart from idles/blocks)
+                task.spawn(function()
+                    local ok, info = pcall(function()
+                        return game:GetService("MarketplaceService"):GetProductInfo(tonumber(tostring(id):match("%d+")) or 0)
+                    end)
+                    if ok and info and info.Name then e.nm = tostring(info.Name):sub(1, 50) end
+                end)
             end
             e.n += 1
             if data then e.has_data = true end
@@ -1371,6 +1406,60 @@ end;
         log_info_if_enabled(self, track);
 
         if not data or tasks >= (aztup.flags.task_concurrency or 25) then
+            -- restore: reactive fallback for UNKNOWN enemy animations. Verified by
+            -- extracting the bundle's baked timing DB (XOR-42, 698 entries): it
+            -- knows only the same 2 of your 34 top anims as the OSS data does.
+            -- Current M1 ids exist in NEITHER db, so no id-port can fix this.
+            -- Non-looped enemy track in range + can_parry => quick block.
+            -- Disable: aztup.flags.parry_unknown_anims = false (console).
+            -- Telemetry: every decision lands in RAIN_ANIMS[id].why (see ANIMDUMP).
+            if not data and track then
+                local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+                local why = "queued"
+                local function note(r) why = r end
+                local fire = true
+                -- restore: NO Looped exclusion — AnimationPlayed fires once per play
+                -- even for looped tracks, and current M1s may be flagged looped.
+                -- Worst case of a stray trigger is one 0.4s block.
+                if fire and not aztup.flags.auto_parry then fire = false note("flag_off") end
+                if fire and aztup.flags.parry_unknown_anims == false then fire = false note("disabled") end
+                if fire and (not self.entity or not local_player.character) then fire = false note("no_char") end
+                if fire and self.entity.Name == local_player.character.Name then fire = false note("self") end
+                if fire and (not local_player.tracker or not local_player.tracker:can_parry()) then fire = false note("can_parry=false") end
+                if fire and not TargetFilter.is_allowed(self.entity, aztup_options.allowed_targets.Value) then fire = false note("target_filter") end
+                local eroot, lroot, dist, lim
+                if fire then
+                    if aztup_options.filters.Value["Dont Parry If Guildmate"] then
+                        local plr = services.Players:GetPlayerFromCharacter(self.entity)
+                        if plr and general:is_teammate(plr) then fire = false note("guildmate") end
+                    end
+                end
+                if fire then
+                    eroot = self.entity:FindFirstChild("HumanoidRootPart")
+                    lroot = eroot and local_player.root_part
+                    if not (eroot and lroot) then fire = false note("no_hrp") end
+                end
+                if fire then
+                    dist = (eroot.Position - lroot.Position).Magnitude
+                    lim = self.is_player
+                        and (aztup.flags.dont_process_players_over_studs or 60)
+                        or (aztup.flags.dont_process_mobs_over_studs or 60)
+                    if dist > lim then fire = false note(string.format("dist=%.0f>%.0f", dist, lim)) end
+                end
+                if fire then
+                    local er = getgenv().EffectReplicator or EffectReplicator
+                    if aztup_options.filters.Value["Dont Parry If Not In Combat"] and not er:FindEffect("Danger") then
+                        fire = false note("no_danger")
+                    end
+                end
+                if fire then
+                    DefendActionManager:queue_generic_parry_task(self.entity, 0.4)
+                end
+                gg.RAIN_FB = gg.RAIN_FB or {}
+                gg.RAIN_FB[why] = (gg.RAIN_FB[why] or 0) + 1
+                local e2 = gg.RAIN_ANIMS and gg.RAIN_ANIMS[tostring(id)]
+                if e2 then e2.why = why end
+            end
             return        
 end;
 
