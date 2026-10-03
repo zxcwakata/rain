@@ -127,6 +127,15 @@ end
 function feature:handle(frame: Frame)
     if frame.Name ~= "PlayerFrame" then return end
 
+    -- restore: bundle ShowHiddenPlayers parity (bundle 86368-86370). Handled
+    -- frames are revealed while spectate is on so hidden players stay
+    -- clickable; original visibility is restored on disable/cleanup.
+    local orig_visible = frame.Visible
+    if not orig_visible then
+        pcall(function() frame.Visible = true end)
+    end
+    feature.hidden_restores = feature.hidden_restores or {}
+
     -- restore: bundle-faithful click path (bundle 85928-85982 has NO hover
     -- precondition and NO transparency gate). The old `inside` flag + the
     -- `Transparency == 0 → return` check ate normal clicks (visible text IS 0)
@@ -201,13 +210,8 @@ function feature:handle(frame: Frame)
             return
         end
 
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then
-            getgenv().RAIN_LASTCLICK = "no_humanoid"
-            Logger:notify_sound("Failed to spectate", fetch_name(plr), "no humanoid.")
-            return
-        end
-
+        -- restore: bundle subject is the HumanoidRootPart, not the Humanoid
+        -- (bundle 85973-85975). Self-click resets via the label toggle above.
         if currentSpectatedLabel then
             currentSpectatedLabel.TextColor3 = defaultTextColor
         end
@@ -219,7 +223,10 @@ function feature:handle(frame: Frame)
         getgenv().RAIN_LASTCLICK = "spectating:" .. tostring(plr.Name)
         Logger:notify_sound("Started spectating", fetch_name(plr))
 
-        start_subject_loop(player_label, function() return humanoid end)
+        start_subject_loop(player_label, function()
+            local c = plr.Character
+            return c and c:FindFirstChild("HumanoidRootPart")
+        end)
     end);
 
     table.insert(self.conns, input_began)
@@ -230,6 +237,15 @@ function feature:handle(frame: Frame)
             frame_maid:do_cleaning();
         end;
     end));
+    if not orig_visible then
+        local restore_fn = function()
+            pcall(function()
+                if frame and frame.Parent then frame.Visible = orig_visible end
+            end)
+        end
+        frame_maid:give_task(restore_fn);
+        table.insert(feature.hidden_restores, restore_fn)
+    end
 
     aztup.maid:give_task(frame_maid);
 end
@@ -269,8 +285,8 @@ end;
     local target_label = target_player_frame and target_player_frame:FindFirstChild("Player") :: TextLabel?
     if not target_label then return end
 
-    local humanoid = target_player.Character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
+    local target_hrp = target_player.Character:FindFirstChild("HumanoidRootPart")
+    if not target_hrp then return end
 
     if currentSpectatedLabel == target_label then
         self:stop_spectate();
@@ -287,7 +303,10 @@ end;
     ensure_stream_conn(self)
     Logger:notify_sound("Started spectating", fetch_name(target_player))
 
-    start_subject_loop(target_label, function() return humanoid end)
+    start_subject_loop(target_label, function()
+        local c = target_player.Character
+        return c and c:FindFirstChild("HumanoidRootPart")
+    end)
 end;
 
 function feature:disable()
@@ -299,6 +318,12 @@ function feature:disable()
     end;
     table.clear(self.conns);
     self.stream_conn = nil;
+
+    -- restore: undo the ShowHiddenPlayers-style reveal on disable
+    if self.hidden_restores then
+        for _, fn in self.hidden_restores do pcall(fn) end
+        table.clear(self.hidden_restores);
+    end
 
     if self.last_conn then
         self.last_conn:Disconnect();

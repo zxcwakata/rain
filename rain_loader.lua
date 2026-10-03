@@ -23,7 +23,7 @@ local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
 -- If it prints nil or an older tag, you are executing a STALE copy
 -- (old file contents, executor cache, or a duplicate in autoexec folder).
-getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-5"
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-6"
 print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
 
 if not game:IsLoaded() then
@@ -41,15 +41,6 @@ local STUBS = {
     ["@src/security/user_service"] = function() return {} end,
     ["@src/utility/setup_auto_load"] = function() return function() end end,
     ["@src/main_menu/loader"] = function() return true end,
-    ["@src/features/auto-parry/builder"] = function()
-        return { set_visible = function() end }
-    end,
-    ["@src/features/auto-parry/data/custom_timings"] = function()
-        return {
-            sync = function() return function() end end,
-            lookup = function() return nil end,
-        }
-    end,
     ["@src/features/buttons/refresh"] = function()
         return function()
             local ok, fn = pcall(require, "@src/features/buttons/respawn")
@@ -918,6 +909,7 @@ end
 -- not the boot stub). Resolves when the game replicates it.
 task.spawn(function()
     for _ = 1, 60 do
+        if getgenv().RAIN_RESTORED_DEAD then break end
         local ok, mod = pcall(function()
             local m = game:GetService("ReplicatedStorage"):FindFirstChild("EffectReplicator")
             if not m then return nil end
@@ -1031,16 +1023,23 @@ if Library and Library.OnUnload then
         if shared.unloaded then return end
         shared.unloaded = true
         getgenv().RAIN_RESTORED_DEAD = true
+        -- restore: let heartbeat/supervisor loops observe the flag and exit
+        -- BEFORE hooks come off; ripping hooks out from under live callbacks
+        -- is what hard-crashes the client on unload.
+        task.wait(1.0)
         if getgenv().RAIN_HOOKS and getgenv().RAIN_HOOKS.detach then
-            pcall(function() getgenv().RAIN_HOOKS.detach() end)
+            local h = getgenv().RAIN_HOOKS
             getgenv().RAIN_HOOKS = nil
+            task.spawn(function()
+                pcall(function() h.detach() end)
+            end)
         end
         if env.aztup then
             if env.Markers then
                 for _, marker in env.Markers:get() do pcall(function() marker:Destroy() end) end
                 getgenv().Markers = nil
             end
-            env.aztup:detach()
+            pcall(function() env.aztup:detach() end)
             -- inert stub, NOT nil: lingering loops (base_esp etc.) must no-op instead of erroring
             env.aztup = {
                 flags = {}, features = {}, farms = {}, tabs = {},

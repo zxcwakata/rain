@@ -1604,88 +1604,98 @@ function Hooking.init()
 end
 
 ---Hooking detach.
+-- restore: staged, yielding detach. Restoring every hook in one atomic burst
+-- while game threads sit inside them is what hard-crashes (esp. Potassium).
+-- Order: client AC back on first, cheap function hooks, yield, metamethods,
+-- yield, remotes, effect module. Every step isolated via pcall.
 function Hooking.detach()
 	local localPlayer = playersService.LocalPlayer
 
+	pcall(function()
+		local playerScripts = localPlayer and localPlayer:FindFirstChild("PlayerScripts")
+		local clientActor = playerScripts and playerScripts:FindFirstChild("ClientActor")
+		local clientManager = clientActor and clientActor:FindFirstChild("ClientManager")
+		if clientManager then
+			clientManager.Enabled = true
+		end
+	end)
+	task.wait(0.2)
+
 	if hookedKeyHandlerModule and oldKeyHandlerModule then
-		hookfunction(hookedKeyHandlerModule, oldKeyHandlerModule)
+		pcall(hookfunction, hookedKeyHandlerModule, oldKeyHandlerModule)
 	end
 
 	if hookedGetFn and oldGetKey then
-		hookfunction(hookedGetFn, oldGetKey)
+		pcall(hookfunction, hookedGetFn, oldGetKey)
 	end
 
 	if hookedCreateFn and oldCreateKey then
-		hookfunction(hookedCreateFn, oldCreateKey)
+		pcall(hookfunction, hookedCreateFn, oldCreateKey)
 	end
 
 	if oldPrint then
-		hookfunction(print, oldPrint)
+		pcall(hookfunction, print, oldPrint)
 	end
 
 	if oldWarn then
-		hookfunction(warn, oldWarn)
+		pcall(hookfunction, warn, oldWarn)
 	end
 
 	if oldGetLogHistory then
-		hookfunction(LogService.GetLogHistory, oldGetLogHistory)
+		pcall(hookfunction, LogService.GetLogHistory, oldGetLogHistory)
 	end
 
 	if oldTick then
-		hookfunction(tick, oldTick)
+		pcall(hookfunction, tick, oldTick)
 	end
 
 	if oldToString then
-		hookfunction(tostring, oldToString)
+		pcall(hookfunction, tostring, oldToString)
 	end
+	task.wait(0.2)
 
 	if oldIndex then
-		hookfunction(getrawmetatable(game).__index, oldIndex)
+		pcall(hookfunction, getrawmetatable(game).__index, oldIndex)
 	end
 
 	if oldNameCall then
 		if usingMetaMethodHooks and hookmetamethod then
-			hookmetamethod(game, "__namecall", oldNameCall)
+			pcall(hookmetamethod, game, "__namecall", oldNameCall)
 		else
-			hookfunction(getrawmetatable(game).__namecall, oldNameCall)
+			pcall(hookfunction, getrawmetatable(game).__namecall, oldNameCall)
 		end
 	end
 
 	if oldNewIndex then
 		if usingMetaMethodHooks and hookmetamethod then
-			hookmetamethod(game, "__newindex", oldNewIndex)
+			pcall(hookmetamethod, game, "__newindex", oldNewIndex)
 		else
-			hookfunction(getrawmetatable(game).__newindex, oldNewIndex)
+			pcall(hookfunction, getrawmetatable(game).__newindex, oldNewIndex)
 		end
 	end
+	task.wait(0.2)
 
 	if oldFireServer then
-		hookfunction(Instance.new("RemoteEvent").FireServer, oldFireServer)
+		pcall(hookfunction, Instance.new("RemoteEvent").FireServer, oldFireServer)
 	end
 
 	if oldUnreliableFireServer then
-		hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, oldUnreliableFireServer)
+		pcall(hookfunction, Instance.new("UnreliableRemoteEvent").FireServer, oldUnreliableFireServer)
 	end
 
-	local effectReplicator = getEffectReplicator()
-	local effectReplicatorModule = effectReplicator and require(effectReplicator)
+	pcall(function()
+		local effectReplicator = getEffectReplicator()
+		local effectReplicatorModule = effectReplicator and require(effectReplicator)
 
-	if oldHasEffect and effectReplicatorModule then
-		effectReplicatorModule.HasEffect = oldHasEffect
-		oldHasEffect = nil
-	end
+		if oldHasEffect and effectReplicatorModule then
+			effectReplicatorModule.HasEffect = oldHasEffect
+			oldHasEffect = nil
+		end
+	end)
 
 	usingMetaMethodHooks = false
 
-	local playerScripts = localPlayer:FindFirstChild("PlayerScripts")
-	local clientActor = playerScripts and playerScripts:FindFirstChild("ClientActor")
-	local clientManager = clientActor and clientActor:FindFirstChild("ClientManager")
-
-	if clientManager then
-		clientManager.Enabled = true
-	end
-
-	Logger.warn("Pulled out of client-side anticheat.")
+	pcall(Logger.warn, "Pulled out of client-side anticheat.")
 end
 
 -- Return Hooking module.
@@ -1694,6 +1704,7 @@ end
 -- Retries forever: early boot often precedes game replication.
 task.spawn(function()
     while true do
+        if getgenv().RAIN_RESTORED_DEAD then break end
         local ok, err = pcall(function() KeyHandling.init() end)
         if ok then
             print("[hooks] KeyHandling ready")

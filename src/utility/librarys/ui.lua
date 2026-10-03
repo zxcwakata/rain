@@ -2432,6 +2432,12 @@ end
 
 
 function Library:AddTextToInfoLogger(Text, CopyText, CopyFunc, Expiry)
+	-- restore: only Library.Console is ever created (CreateInfoLogger is never
+	-- called for a timing logger), so InfoLoggerContainer/Data are nil and every
+	-- timing-log call errored. Route timing entries into the Console logger.
+	if Library.Console and Library.Console.AddText then
+		return Library.Console:AddText(Text, CopyText, CopyFunc, Expiry)
+	end
 	local InfoContainerLabel = Library:CreateLabel({
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Size = UDim2.new(1, 0, 0, 18),
