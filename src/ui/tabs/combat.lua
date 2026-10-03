@@ -650,7 +650,7 @@ end;
     end);
 
     other:newToggle("info_logger", "Timing Logger", false, "Log anims to console.", nil);
-    other:newSlider("info_logger_range", "Timing Logger Range", 1, 1, 500, 0, true, "s");
+    other:newSlider("info_logger_range", "Timing Logger Range", 100, 1, 500, 0, true, "s");
     local timing_builder = require("@src/features/auto-parry/builder");
     local timings = tab:newGroupBox("Timing Builder", true);
     timings:newToggleWithKeybind("show_timing_builder", "Show Timing Builder", false, "Make your own parry timings. Pick an animation it watched (or click one in the Timing Logger), place actions on the timeline, then Save.", function(val)
