@@ -136,14 +136,13 @@ function feature:handle(frame: Frame)
     end
     feature.hidden_restores = feature.hidden_restores or {}
 
-    -- restore: bundle-faithful click path (bundle 85928-85982 has NO hover
-    -- precondition and NO transparency gate). The old `inside` flag + the
-    -- `Transparency == 0 → return` check ate normal clicks (visible text IS 0)
-    -- and could stick: react to MB1 on the frame, nothing else.
+    -- restore: input goes to the TOPMOST object (inner labels eat the click;
+    -- InputBegan does not bubble), so hook the frame AND every descendant.
     local frame_maid = maid.new();
 
-    local input_began = frame.InputBegan:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+    local function on_input(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.MouseButton2 then
             return
         end
         do local gg = getgenv() gg.RAIN_CLICKS = (gg.RAIN_CLICKS or 0) + 1 end
@@ -227,11 +226,22 @@ function feature:handle(frame: Frame)
             local c = plr.Character
             return c and c:FindFirstChild("HumanoidRootPart")
         end)
-    end);
+    end
 
-    table.insert(self.conns, input_began)
+    local function hook_object(obj)
+        if not obj or not obj:IsA("GuiObject") then return end
+        frame_maid:give_task(obj.InputBegan:Connect(function(input)
+            on_input(input)
+        end))
+    end
+    hook_object(frame)
+    for _, d in frame:GetDescendants() do hook_object(d) end
+    frame_maid:give_task(frame.DescendantAdded:Connect(function(d)
+        hook_object(d)
+    end));
 
-    frame_maid:give_task(input_began);
+    self.frame_maids = self.frame_maids or {};
+    table.insert(self.frame_maids, frame_maid);
     frame_maid:give_task(frame.AncestryChanged:Connect(function()
         if not frame:IsDescendantOf(local_player.instance) then
             frame_maid:do_cleaning();
@@ -318,6 +328,12 @@ function feature:disable()
     end;
     table.clear(self.conns);
     self.stream_conn = nil;
+
+    -- restore: input hooks live in per-frame maids (frame + all descendants)
+    if self.frame_maids then
+        for _, fm in self.frame_maids do pcall(function() fm:do_cleaning() end) end
+        table.clear(self.frame_maids);
+    end
 
     -- restore: undo the ShowHiddenPlayers-style reveal on disable
     if self.hidden_restores then
