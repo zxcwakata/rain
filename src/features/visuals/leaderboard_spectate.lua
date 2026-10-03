@@ -126,6 +126,14 @@ end
 
 function feature:handle(frame: Frame)
     if frame.Name ~= "PlayerFrame" then return end
+    -- restore: attach-once per frame (bundle: `if spectateMaid[frame] then
+    -- continue end`). The leaderboard re-parents/re-sorts rows on every
+    -- update, ChildAdded refires for the SAME row, and without this guard each
+    -- re-attach stacks another InputBegan hook — one click then toggles
+    -- spectate on/off repeatedly (Started/Reset spam).
+    self.handled = self.handled or {}
+    if self.handled[frame] then return end
+    self.handled[frame] = true
 
     -- restore: bundle ShowHiddenPlayers parity (bundle 86368-86370). Handled
     -- frames are revealed while spectate is on so hidden players stay
@@ -230,6 +238,10 @@ function feature:handle(frame: Frame)
 
     local function hook_object(obj)
         if not obj or not obj:IsA("GuiObject") then return end
+        -- restore: same object can resurface via DescendantAdded; hook once.
+        self.hooked_objs = self.hooked_objs or {}
+        if self.hooked_objs[obj] then return end
+        self.hooked_objs[obj] = true
         frame_maid:give_task(obj.InputBegan:Connect(function(input)
             on_input(input)
         end))
@@ -244,6 +256,7 @@ function feature:handle(frame: Frame)
     table.insert(self.frame_maids, frame_maid);
     frame_maid:give_task(frame.AncestryChanged:Connect(function()
         if not frame:IsDescendantOf(local_player.instance) then
+            self.handled[frame] = nil
             frame_maid:do_cleaning();
         end;
     end));
@@ -334,6 +347,9 @@ function feature:disable()
         for _, fm in self.frame_maids do pcall(function() fm:do_cleaning() end) end
         table.clear(self.frame_maids);
     end
+    -- restore: drop attach-once marks so a clean re-enable re-hooks rows once
+    if self.handled then table.clear(self.handled) end
+    if self.hooked_objs then table.clear(self.hooked_objs) end
 
     -- restore: undo the ShowHiddenPlayers-style reveal on disable
     if self.hidden_restores then
