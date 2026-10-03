@@ -1716,12 +1716,23 @@ end
             })
             -- restore: setfenv is unavailable here; run with temp globals instead.
             -- NOTE: the holder thread can be killed mid-run (track cancel on
-            -- feint/end), so a plain boolean lock deadlocks ALL parrying
-            -- forever. Deadline waiter + save/restore bounds damage to ~1s.
+            -- feint/end). Waiters steal the lock instantly when the holder is
+            -- dead instead of sitting out a blind deadline (that was the ~1s
+            -- post-feint freeze); the short deadline only covers live holders.
             do
-                local __deadline = tick() + 1
-                while getgenv().__rain_runlock and tick() < __deadline do task.wait() end
+                local __me = coroutine.running()
+                local __deadline = tick() + 0.25
+                while getgenv().__rain_runlock do
+                    local __holder = getgenv().__rain_runholder
+                    if __holder ~= nil and __holder ~= __me then
+                        local __ok_s, __st = pcall(coroutine.status, __holder)
+                        if __ok_s and __st == "dead" then break end
+                    end
+                    if tick() >= __deadline then break end
+                    task.wait()
+                end
                 getgenv().__rain_runlock = true
+                getgenv().__rain_runholder = __me
                 local __saved = {}
                 for __k in pairs(fake_env) do __saved[__k] = getgenv()[__k] getgenv()[__k] = fake_env[__k] end
                 if getgenv().thrown == nil then
@@ -1730,6 +1741,7 @@ end
                 local __ok, __err = pcall(data.run, actions, self)
                 for __k in pairs(fake_env) do getgenv()[__k] = __saved[__k] end
                 getgenv().__rain_runlock = nil
+                getgenv().__rain_runholder = nil
                 if not __ok then warn("[restore] parry run: " .. tostring(__err)) end
             end
     
