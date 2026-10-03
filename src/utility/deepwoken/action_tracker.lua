@@ -1,17 +1,29 @@
 local tracker = {};
 tracker.__index = tracker;
 
+-- restore: resolve the LIVE EffectReplicator at call time. The boot stub is
+-- replaced by the real game module after replication; chunks may hold a stale
+-- global snapshot, so never use the load-time global directly.
+local function live_er()
+    local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+    local er = gg and gg.EffectReplicator or nil
+    if type(er) == "table" then return er end
+    return EffectReplicator
+end
+
 function tracker:can_parry()
-	if not EffectReplicator:FindEffect("Equipped") then
+	local er = live_er()
+	if not er:FindEffect("Equipped") then
 		return false
 	end
 
-	return not EffectReplicator:FindEffect("ParryCool")
+	return not er:FindEffect("ParryCool")
 end
 
 
 function tracker:can_dodge()
-	if EffectReplicator:HasAny("NoRoll", "PreventRoll", "Stun") then
+	local er = live_er()
+	if er:HasAny("NoRoll", "PreventRoll", "Stun") then
 		return false
 	end
 

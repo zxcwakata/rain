@@ -127,20 +127,15 @@ end
 function feature:handle(frame: Frame)
     if frame.Name ~= "PlayerFrame" then return end
 
-    local mouse_enter, mouse_leave, input_began, inside;
+    -- restore: bundle-faithful click path (bundle 85928-85982 has NO hover
+    -- precondition and NO transparency gate). The old `inside` flag + the
+    -- `Transparency == 0 → return` check ate normal clicks (visible text IS 0)
+    -- and could stick: react to MB1 on the frame, nothing else.
     local frame_maid = maid.new();
 
-    mouse_enter = frame.MouseEnter:Connect(function()
-        inside = true
-    end);
-
-    mouse_leave = frame.MouseLeave:Connect(function()
-        inside = false
-    end);
-
-    input_began = frame.InputBegan:Connect(function(input)
-        if not inside then
-            return 
+    local input_began = frame.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
         end
 
         -- restore: handler may fire before lazy fill registers the module
@@ -152,7 +147,7 @@ function feature:handle(frame: Frame)
         end
 
         local player_label = player_frame:FindFirstChild("Player") :: TextLabel?
-        if not player_label or player_label.Transparency == 0 then
+        if not player_label then
             return
         end
 
@@ -219,12 +214,8 @@ function feature:handle(frame: Frame)
         start_subject_loop(player_label, function() return humanoid end)
     end);
 
-    table.insert(self.conns, mouse_enter)
-    table.insert(self.conns, mouse_leave)
     table.insert(self.conns, input_began)
 
-    frame_maid:give_task(mouse_enter);
-    frame_maid:give_task(mouse_leave);
     frame_maid:give_task(input_began);
     frame_maid:give_task(frame.AncestryChanged:Connect(function()
         if not frame:IsDescendantOf(local_player.instance) then

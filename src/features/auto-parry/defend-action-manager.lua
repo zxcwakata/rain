@@ -9,6 +9,7 @@ local function live_kh()
     return KeyHandler
 end
 
+<<<<<<< HEAD
 -- restore: bundle Auto Defense execution gaps (QueuedBlocking 25926-26150,
 -- valid() 77593-77702, StartBlock 75267-75269)
 local unblock_jitter = Random.new()
@@ -30,6 +31,8 @@ local function has_iframes()
     return false
 end
 
+=======
+>>>>>>> 1bebd1446686eacda3f2e1b7dedee8c076312613
 local DefendActionManager = {} do
     DefendActionManager.actions_to_play_through = {};
     DefendActionManager.currently_handling = {};

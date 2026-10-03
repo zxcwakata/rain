@@ -23,7 +23,7 @@ local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
 -- If it prints nil or an older tag, you are executing a STALE copy
 -- (old file contents, executor cache, or a duplicate in autoexec folder).
-getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-1"
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-2"
 print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
 
 if not game:IsLoaded() then

@@ -281,23 +281,17 @@ function feature:enable()
 end;
 
 function feature:disable()
-    if not self.w then return end
+    -- restore: NO early return — a skipped cleanup leaves BV/AirController behind
+    -- and the character freezes in place until toggles "release" it.
+    self.w = false
 
     if feature.toggled_knocked_owner_for_user then
         aztup_toggles.knocked_ownership:SetValue(false);
     end;
     
-    
-
-    
-    
-    
-    
-    
-    
-
     if self.highlight then
         self.highlight:Destroy();
+        self.highlight = nil;
     end;
 
     if old_y and spoofing then
@@ -306,20 +300,30 @@ function feature:disable()
         old_y = nil;
     end;
 
-    self.w = false
-    -- restore: fly disable left AirController active (hover/freeze after toggle off)
-    do local ch = local_player and local_player.character local cm = ch and ch:FindFirstChild("ControllerManager") local gc = cm and cm:FindFirstChild("GroundController") if cm and gc then pcall(function() cm.ActiveController = gc end) end end
-    if current_bv then
-        current_bv:Destroy();
+    -- restore: sweep ALL leftover fly velocities (not just current_bv —
+    -- respawn/race with the tick loop can orphan clones), then ground ctrl
+    do
+        local ch = local_player and local_player.character
+        if ch then
+            for _, b in ch:QueryDescendants("BasePart > BodyVelocity") do
+                if b.Name == "SlideVel" or services.CollectionService:HasTag(b, "AllowedBM") then
+                    b:Destroy();
+                end
+            end
+            local cm = ch:FindFirstChild("ControllerManager")
+            local gc = cm and cm:FindFirstChild("GroundController")
+            if cm and gc then pcall(function() cm.ActiveController = gc end) end
+        end
         current_bv = nil;
-    end;
+    end
 
     local effect = EffectReplicator:FindEffect("OverrideSpeedCap");
     if effect then
         effect:Debris(1);
     end;
     
-    local ground_sensor = local_player.root_part:FindFirstChild("GroundSensor")
+    local rp = local_player and local_player.root_part
+    local ground_sensor = rp and rp:FindFirstChild("GroundSensor")
     if not ground_sensor then
         return
     end
