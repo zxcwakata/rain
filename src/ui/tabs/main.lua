@@ -187,6 +187,8 @@ return function(tab)
 
     local ap_breaker_dependency_box = other_groupbox:newDependencyBox("ap_breaker");
     local types = {
+        "Mira (Blatant)",
+        "Aggressive 4 (Blatant)",
         "Aggressive 3 (Blatant)",
         "Aggressive 2 (Blatant)",
         "Aggressive", 

@@ -1345,34 +1345,53 @@ end;
     
     
     local function log_info_if_enabled(self, track)
+        -- restore: fully self-sufficient. Bare `Library`/`lexend` may be stale
+        -- snapshots in this chunk's env (same class of bug as EffectReplicator),
+        -- and any error here used to kill logging silently inside task.spawn.
+        local gg = (typeof(getgenv) == "function" and getgenv()) or _G
+        local Lib = (gg and gg.Library) or Library
         if not (aztup.flags.info_logger and self.entity:FindFirstChild("HumanoidRootPart") and self.entity.Name ~= local_player.character.Name) then
-            return        
-end
+            return
+        end
+        local lp_rp = local_player and local_player.root_part
+        if not lp_rp then return end
 
-        local dist = (local_player.root_part.Position - self.entity.HumanoidRootPart.Position).Magnitude;
-        if dist > aztup.flags.info_logger_range then
-            return        
-end
+        local dist = (lp_rp.Position - self.entity.HumanoidRootPart.Position).Magnitude;
+        if dist > (aztup.flags.info_logger_range or 100) then
+            return
+        end
 
         task.spawn(function()
-            local name = getInfo(track.Animation.AnimationId:match("%d+")).Name
+            local ok_ai, anim_id = pcall(function() return track.Animation.AnimationId end)
+            if not ok_ai or not anim_id then return end
+            local ok_n, name = pcall(function() return getInfo(tostring(anim_id):match("%d+")).Name end)
+            name = (ok_n and name) or ""
             if name:lower():match("parried") then return end
             if name:lower():match("idle") then return end
 
             local disallowed = false;
-            local assets = game:GetService("ReplicatedStorage"):FindFirstChild("Assets");
-            for _, anim in assets.Anims.Movement:GetDescendants() do
-                if anim:IsA("Animation") and anim.AnimationId == track.Animation.AnimationId then
-                    disallowed = true;
-                    break                
-end;
+            local ok_a, assets = pcall(function() return game:GetService("ReplicatedStorage"):FindFirstChild("Assets") end)
+            local mov = ok_a and assets and assets:FindFirstChild("Anims") and assets.Anims:FindFirstChild("Movement")
+            if mov then
+                for _, anim in mov:GetDescendants() do
+                    if anim:IsA("Animation") and anim.AnimationId == anim_id then
+                        disallowed = true;
+                        break
+                    end;
+                end
             end
 
             if disallowed then return end
+            if not Lib or not Lib.AddTextToInfoLogger then return end
 
-            Library:AddTextToInfoLogger(string.format("%s %s %s", name, tostring(track.Animation.AnimationId:match("%d+")), self.entity.Name), tostring(track.Animation.AnimationId:match("%d+")), function()
-                if getgenv().timing_builder then getgenv().timing_builder:load_track(track, self.entity); end;
-            end, 60);
+            local ok_l, err_l = pcall(function()
+                Lib:AddTextToInfoLogger(string.format("%s %s %s", name, tostring(tostring(anim_id):match("%d+")), self.entity.Name), tostring(tostring(anim_id):match("%d+")), function()
+                    if getgenv().timing_builder then getgenv().timing_builder:load_track(track, self.entity); end;
+                end, 60);
+            end)
+            if not ok_l then
+                gg.__rain_loginfo_err = tostring(err_l):sub(1, 120)
+            end
         end);
     end
 
