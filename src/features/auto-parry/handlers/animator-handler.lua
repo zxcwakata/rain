@@ -1463,7 +1463,13 @@ end;
                     end
                 end
                 if fire and not aztup.flags.auto_parry then fire = false note("flag_off") end
-                if fire and aztup.flags.parry_unknown_anims == false then fire = false note("disabled") end
+                -- restore: OPT-IN reactive fallback for UNKNOWN enemy animations.
+                -- Default OFF (bundle-like: only curated ids parry). The mirror-
+                -- blocking of emotes/block-poses ("parrying air") came from this
+                -- firing on everything. Enable: parry_unknown_anims = true.
+                -- Verified by full extraction: bundle DB (698) + OSS data lack
+                -- current anims either way, so no id-port can fix those.
+                if fire and aztup.flags.parry_unknown_anims ~= true then fire = false note("fallback_off") end
                 if fire and (not self.entity or not local_player.character) then fire = false note("no_char") end
                 if fire and self.entity.Name == local_player.character.Name then fire = false note("self") end
                 -- restore: parry unavailable (CD/unequipped) => dodge instead of
@@ -1518,6 +1524,28 @@ end;
                         fire = false note("post_parry_window")
                     end
                 end
+                -- restore: echo suppressions (kill the 2nd press, replication-proof
+                -- — none of this waits for ParryCool to replicate).
+                -- (a) same (entity, anim) within 1.0s = replay/echo, not a new swing.
+                if fire then
+                    getgenv().__rain_lastecho = getgenv().__rain_lastecho or {}
+                    local ok_dbg, dbg = pcall(function() return self.entity:GetDebugId() end)
+                    local ekey = (ok_dbg and tostring(dbg) or tostring(self.entity and self.entity.Name)) .. "|" .. tostring(id)
+                    local last_e = getgenv().__rain_lastecho[ekey]
+                    if last_e and tick() - last_e < 1.0 then
+                        fire = false note("echo")
+                    else
+                        getgenv().__rain_lastecho[ekey] = tick()
+                    end
+                end
+                -- (b) we queued ANY block <0.45s ago = stagger/mirror noise right
+                -- after our press. Real chain continuations arrive later.
+                if fire then
+                    local lbq = getgenv().__rain_lastblockq
+                    if lbq and tick() - lbq < 0.45 then
+                        fire = false note("own_block_echo")
+                    end
+                end
                 if fire then
                     -- restore: dodge variation for unknown anims (fixes "only
                     -- parries, never dodges" — the fallback previously knew only
@@ -1532,7 +1560,9 @@ end;
                         local can = (not aztup.flags.only_convert_dodge_if_possible)
                             or (local_player.tracker and local_player.tracker:can_dodge())
                         if can then
-                            DefendActionManager:queue_generic_dodge_task(self.entity)
+                            -- restore: roll slightly delayed (0.25s) — a dodge
+                            -- queued at windup start wastes i-frames before impact.
+                            DefendActionManager:queue_generic_dodge_task(self.entity, 0.25)
                             queued_how = "dodge"
                             why = parry_unavail and "queued_dodge_cd" or "queued_dodge"
                         end
