@@ -1,18 +1,5 @@
--- Menu banner: clickable image centered above the main window.
--- THREE ways to provide the picture (first filled one wins):
---   1. IMAGE_ID   — Roblox decal/image id, e.g. "rbxassetid://123456789".
---      Upload at roblox.com (Create -> Decals/Images). Works everywhere.
---   2. IMAGE_PATH — local file next to the script, e.g. "RainBanner.png".
---      Needs getcustomasset (most executors have it, check yours).
---   3. IMAGE_URL  — direct link (Discord/GitHub/Imgur ...png), downloads once
---      into your executor workspace, then uses it like (2).
---   4. Write what the click should do into ON_CLICK.
--- Size: your source is 756x505 (ratio ~3:2). The menu window is 550 wide, so a
--- full-size banner would overhang — defaults below keep the ratio at 300x200.
--- Change BANNER_W/H freely (H = W * 505 / 756 to keep proportions).
-
 local IMAGE_ID = "" -- e.g. "rbxassetid://123456789"
-local IMAGE_PATH = "" -- e.g. "RainBanner.png" (in executor workspace folder)
+local IMAGE_PATH = "RainBanner.png" -- e.g. "RainBanner.png" (in executor workspace folder)
 local IMAGE_URL = "" -- e.g. "https://.../banner.png"
 local BANNER_W, BANNER_H = 300, 200
 
