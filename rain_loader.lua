@@ -34,11 +34,15 @@ do
     local __orig_warn = warn
     local __collecting = false
     function warn(...)
+        local n, args = select("#", ...), { ... }
         if not __collecting then
             __collecting = true
             pcall(function()
                 local parts = {}
-                for i = 1, select("#", ...) do parts[#parts + 1] = tostring(select(i, ...)) end
+                for i = 1, n do
+                    local ok, s = pcall(tostring, args[i])
+                    parts[#parts + 1] = ok and s or "?"
+                end
                 local log = getgenv().RAIN_ERRORS
                 if #log < 200 then log[#log + 1] = table.concat(parts, " "):sub(1, 300) end
             end)
