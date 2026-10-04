@@ -1,21 +1,37 @@
 local IMAGE_ID = "" -- e.g. "rbxassetid://123456789"
 local IMAGE_PATH = "RainBanner.png" -- e.g. "RainBanner.png" (in executor workspace folder)
 local IMAGE_URL = "" -- e.g. "https://.../banner.png"
-local BANNER_W, BANNER_H = 300, 200
+-- Corner-grab preset: menu is 550 wide, so a 550-wide banner centers its own
+-- top corners exactly onto the menu's top corners. Source is 1088x944, so
+-- H = 550*944/1088 = 477 keeps ratio.
+-- GRAB_OVERLAP: how many px the picture slides DOWN over the window edge
+-- (hands "grab" the frame). Increase if hands float above, decrease if buried.
+local BANNER_W, BANNER_H = 550, 477
+local GRAB_OVERLAP = 185
 
 local function resolve_image()
-    if IMAGE_PATH ~= "" and typeof(getcustomasset) == "function" then
-        local ok, asset = pcall(getcustomasset, IMAGE_PATH)
+    -- restore: executor globals (getcustomasset/isfile/writefile) may be
+    -- invisible to loadstring chunks by bare name — resolve via getgenv().
+    local gg = (typeof(getgenv) == "function" and getgenv()) or {}
+    local gca = (typeof(gg.getcustomasset) == "function" and gg.getcustomasset)
+        or (typeof(getcustomasset) == "function" and getcustomasset)
+    local g_isfile = (typeof(gg.isfile) == "function" and gg.isfile)
+        or (typeof(isfile) == "function" and isfile)
+    if IMAGE_PATH ~= "" and gca then
+        local ok, asset = pcall(gca, IMAGE_PATH)
         if ok and asset then return asset end
     end
-    if IMAGE_URL ~= "" and typeof(getcustomasset) == "function" then
+    if IMAGE_URL ~= "" and gca then
         local ok = pcall(function()
-            if not isfile("RainBanner.png") then
-                writefile("RainBanner.png", game:HttpGet(IMAGE_URL))
+            local has = g_isfile and g_isfile("RainBanner.png")
+            if not has then
+                local wf = (typeof(gg.writefile) == "function" and gg.writefile)
+                    or (typeof(writefile) == "function" and writefile)
+                wf("RainBanner.png", game:HttpGet(IMAGE_URL))
             end
         end)
         if ok then
-            local ok2, asset = pcall(getcustomasset, "RainBanner.png")
+            local ok2, asset = pcall(gca, "RainBanner.png")
             if ok2 and asset then return asset end
         end
     end
@@ -38,7 +54,7 @@ return { initialize = function()
     local btn = Instance.new("ImageButton")
     btn.Name = "RainBanner"
     btn.AnchorPoint = Vector2.new(0.5, 1)
-    btn.Position = UDim2.new(0.5, 0, 0, -8)
+    btn.Position = UDim2.new(0.5, 0, 0, GRAB_OVERLAP)
     btn.Size = UDim2.new(0, BANNER_W, 0, BANNER_H)
     btn.BackgroundTransparency = 1
     btn.BorderSizePixel = 0
@@ -46,8 +62,12 @@ return { initialize = function()
     if not img then return warn("[restore] menu_banner: no image (fill IMAGE_ID/PATH/URL)") end
     btn.Image = img
     btn.ScaleType = Enum.ScaleType.Fit
-    btn.ZIndex = 5
+    btn.ZIndex = 0
     btn.AutoButtonColor = true
+    -- restore: let clicks fall through to the game (camera rotate etc.).
+    -- Trade-off: ON_CLICK below will NOT fire while this is false.
+    -- Set back to true if you want the banner clickable again.
+    btn.Active = false
     btn.Parent = holder
 
     btn.MouseButton1Click:Connect(function()
