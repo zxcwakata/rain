@@ -23,8 +23,39 @@ local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
 -- If it prints nil or an older tag, you are executing a STALE copy
 -- (old file contents, executor cache, or a duplicate in autoexec folder).
-getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-7"
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-8"
 print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
+
+-- error collector: every warn() is also stored (cap 200 lines) so console
+-- output can be dumped to a file + clipboard even when it can't be copied
+-- by hand. Run getgenv().RAIN_ERRDUMP() after boot/errors, send rain_errors.txt.
+getgenv().RAIN_ERRORS = getgenv().RAIN_ERRORS or {}
+do
+    local __orig_warn = warn
+    local __collecting = false
+    function warn(...)
+        if not __collecting then
+            __collecting = true
+            pcall(function()
+                local parts = {}
+                for i = 1, select("#", ...) do parts[#parts + 1] = tostring(select(i, ...)) end
+                local log = getgenv().RAIN_ERRORS
+                if #log < 200 then log[#log + 1] = table.concat(parts, " "):sub(1, 300) end
+            end)
+            __collecting = false
+        end
+        return __orig_warn(...)
+    end
+end
+getgenv().RAIN_ERRDUMP = function()
+    local out = table.concat(getgenv().RAIN_ERRORS or {}, "\n")
+    pcall(function()
+        writefile("rain_errors.txt", out)
+        if setclipboard then setclipboard(out) end
+    end)
+    print("[restore] errors dumped: " .. #(getgenv().RAIN_ERRORS or {}) .. " lines -> rain_errors.txt + clipboard")
+    return out
+end
 
 if not game:IsLoaded() then
     repeat task.wait() until game:IsLoaded()
@@ -106,7 +137,7 @@ end
 
 local function __resolve(path)
     if STUBS[path] then return STUBS[path]() end
-    local rel = path:gsub("^@src/", "src/"):gsub("^@assets/", "assets/")
+    local rel = path:gsub("^@src/", "src/"):gsub("^@assets/", "assets/"):gsub("^@games/", "games/")
     local candidates = { rel .. ".lua", rel, rel .. ".json" }
     local last_err = nil
     for _, c in ipairs(candidates) do
@@ -510,6 +541,21 @@ local fflags = env.fflags
 if game.PlaceId == 4111023553 then
     task.spawn(xpcall, function() brequire("@src/main_menu/loader") end, warn)
     return true
+end
+
+-- standalone game hubs (games/ folder, one module per PlaceId)
+local GAME_HUBS = {
+    [2809202155] = "@games/yba", -- Your Bizarre Adventure
+}
+do
+    local hub = GAME_HUBS[game.PlaceId]
+    if hub then
+        task.spawn(xpcall, function()
+            local m = brequire(hub)
+            if m and m.start then m.start() end
+        end, warn)
+        return true
+    end
 end
 
 env.signal = brequire("@src/utility/signal")
