@@ -1,6 +1,3 @@
--- Universal hub: same Rain UI library as the Deepwoken menu, game-agnostic only.
--- Tabs: Main (Movement), Visuals (ESP/World/Camera), UI (Themes/Configs/Menu).
--- Opens on any place outside the Deepwoken allowlist. No Deepwoken modules.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
