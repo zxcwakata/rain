@@ -1,21 +1,30 @@
 -- Universal hub: same Rain UI library as the Deepwoken menu, game-agnostic only.
--- Tabs: Main (Movement), Visuals (ESP), UI (menu controls incl. Unload).
+-- Tabs: Main (Movement), Visuals (ESP/World/Camera), UI (Themes/Configs/Menu).
 -- Opens on any place outside the Deepwoken allowlist. No Deepwoken modules.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
 
 local state = { fly = false, fly_speed = 120, speed = false, speed_val = 32,
     noclip = false, infjump = false, esp = false, esp_names = true,
-    fullbright = false }
+    esp_dist = 1000, esp_enemies = false, fullbright = false,
+    fov_on = false, fov = 70, zoom = false }
 local bv = nil
 local conns = {}
 local esp_gui = nil
+local saved_fov, saved_zoom = nil, nil
 
 local function char() return LP.Character end
 local function hrp() local c = char() return c and c:FindFirstChild("HumanoidRootPart") end
 local function hum() local c = char() return c and c:FindFirstChildOfClass("Humanoid") end
+local function same_team(a, b)
+    local ok, r = pcall(function()
+        return a.Team ~= nil and b.Team ~= nil and a.Team == b.Team
+    end)
+    return ok and r
+end
 
 local function physics_tick()
     local c, r, h = char(), hrp(), hum()
@@ -51,9 +60,35 @@ local function physics_tick()
     end
     if state.fullbright then
         pcall(function()
-            game:GetService("Lighting").Brightness = 2
-            game:GetService("Lighting").ClockTime = 14
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 14
+            Lighting.FogEnd = 100000
         end)
+    end
+    local cam = workspace.CurrentCamera
+    if cam then
+        if state.fov_on then
+            if saved_fov == nil then saved_fov = cam.FieldOfView end
+            pcall(function() cam.FieldOfView = state.fov end)
+        elseif saved_fov ~= nil then
+            pcall(function() cam.FieldOfView = saved_fov end)
+            saved_fov = nil
+        end
+        if state.zoom then
+            if saved_zoom == nil then
+                saved_zoom = { cam.MaxZoomDistance, cam.MinZoomDistance }
+            end
+            pcall(function()
+                cam.MaxZoomDistance = 1000
+                cam.MinZoomDistance = 0.5
+            end)
+        elseif saved_zoom ~= nil then
+            pcall(function()
+                cam.MaxZoomDistance = saved_zoom[1]
+                cam.MinZoomDistance = saved_zoom[2]
+            end)
+            saved_zoom = nil
+        end
     end
 end
 
@@ -68,42 +103,49 @@ local function esp_tick()
         if p ~= LP and p.Character then
             local erp = p.Character:FindFirstChild("HumanoidRootPart")
             if erp then
-                local box = esp_gui:FindFirstChild(p.Name)
-                if not box then
-                    box = Instance.new("Highlight")
-                    box.Name = p.Name
-                    box.FillColor = Color3.fromRGB(8, 147, 201)
-                    box.OutlineColor = Color3.fromRGB(8, 147, 201)
-                    box.FillTransparency = 0.6
-                    box.Adornee = p.Character
-                    box.Parent = esp_gui
-                elseif box.Adornee ~= p.Character then
-                    box.Adornee = p.Character
-                end
-                local tag = esp_gui:FindFirstChild(p.Name .. "_tag")
-                if state.esp_names then
-                    local dist = my_rp and math.floor((my_rp.Position - erp.Position).Magnitude) or 0
-                    if not tag then
-                        tag = Instance.new("BillboardGui")
-                        tag.Name = p.Name .. "_tag"
-                        tag.Size = UDim2.new(0, 200, 0, 20)
-                        tag.StudsOffset = Vector3.new(0, 3, 0)
-                        tag.AlwaysOnTop = true
-                        local lab = Instance.new("TextLabel")
-                        lab.Size = UDim2.new(1, 0, 1, 0)
-                        lab.BackgroundTransparency = 1
-                        lab.Font = Enum.Font.GothamBold
-                        lab.TextSize = 13
-                        lab.TextColor3 = Color3.fromRGB(255, 255, 255)
-                        lab.TextStrokeTransparency = 0.5
-                        lab.Parent = tag
-                        tag.Adornee = erp
-                        tag.Parent = esp_gui
+                local dist = my_rp and (my_rp.Position - erp.Position).Magnitude or 0
+                if dist > state.esp_dist then
+                    local old1 = esp_gui:FindFirstChild(p.Name)
+                    if old1 then old1:Destroy() end
+                    local old2 = esp_gui:FindFirstChild(p.Name .. "_tag")
+                    if old2 then old2:Destroy() end
+                elseif not (state.esp_enemies and same_team(LP, p)) then
+                    local box = esp_gui:FindFirstChild(p.Name)
+                    if not box then
+                        box = Instance.new("Highlight")
+                        box.Name = p.Name
+                        box.FillColor = Color3.fromRGB(8, 147, 201)
+                        box.OutlineColor = Color3.fromRGB(8, 147, 201)
+                        box.FillTransparency = 0.6
+                        box.Adornee = p.Character
+                        box.Parent = esp_gui
+                    elseif box.Adornee ~= p.Character then
+                        box.Adornee = p.Character
                     end
-                    tag:FindFirstChildOfClass("TextLabel").Text =
-                        p.DisplayName .. " (" .. tostring(dist) .. "m)"
-                elseif tag then
-                    tag:Destroy()
+                    local tag = esp_gui:FindFirstChild(p.Name .. "_tag")
+                    if state.esp_names then
+                        if not tag then
+                            tag = Instance.new("BillboardGui")
+                            tag.Name = p.Name .. "_tag"
+                            tag.Size = UDim2.new(0, 200, 0, 20)
+                            tag.StudsOffset = Vector3.new(0, 3, 0)
+                            tag.AlwaysOnTop = true
+                            local lab = Instance.new("TextLabel")
+                            lab.Size = UDim2.new(1, 0, 1, 0)
+                            lab.BackgroundTransparency = 1
+                            lab.Font = Enum.Font.GothamBold
+                            lab.TextSize = 13
+                            lab.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            lab.TextStrokeTransparency = 0.5
+                            lab.Parent = tag
+                            tag.Adornee = erp
+                            tag.Parent = esp_gui
+                        end
+                        tag:FindFirstChildOfClass("TextLabel").Text =
+                            p.DisplayName .. " (" .. tostring(math.floor(dist)) .. "m)"
+                    elseif tag then
+                        tag:Destroy()
+                    end
                 end
             end
         end
@@ -140,47 +182,80 @@ return { start = function(place_id)
     if not (Lib and Lib.PRWindow) then
         return warn("[restore] universal: UI window unavailable")
     end
+    -- the UI lib instance must exist for Theme/Save managers
+    env = getgenv()
+    if env.aztup and not env.aztup.ui then
+        env.aztup.ui = Lib
+    end
     Lib.PRWindow:SetWindowTitle(string.format(
         'universal <font color="#%s">%s</font>', Lib.AccentColor:ToHex(), tostring(place_id)))
 
     -- Main / Movement
     local main = tab_mod.new("Main")
     local movement = main:newGroupBox("Movement")
-    movement:newToggle("u_fly", "Fly (WASD + Space/Ctrl)", false, "Camera-direction fly.",
+    movement:newToggleWithKeybind("u_fly", "Fly", false, "WASD + Space/Ctrl, camera direction.",
         function(v)
             state.fly = v
             if not v and bv then pcall(function() bv:Destroy() end) bv = nil end
-        end)
+        end, true)
     movement:newSlider("u_fly_speed", "Fly Speed", 120, 20, 400, 0, true, "st/s",
         function(v) state.fly_speed = v end)
-    movement:newToggle("u_speed", "WalkSpeed", false, "Constant walk speed.",
-        function(v) state.speed = v end)
+    movement:newToggleWithKeybind("u_speed", "WalkSpeed", false, "Constant walk speed.",
+        function(v) state.speed = v end, true)
     movement:newSlider("u_speed_val", "Speed Value", 32, 16, 200, 0, true, "st/s",
         function(v) state.speed_val = v end)
-    movement:newToggle("u_noclip", "Noclip", false, "No collision.",
-        function(v) state.noclip = v end)
+    movement:newToggleWithKeybind("u_noclip", "Noclip", false, "No collision.",
+        function(v) state.noclip = v end, true)
     movement:newToggle("u_infjump", "Infinite Jump", false, "Jump in mid-air.",
         function(v) state.infjump = v end)
 
     -- Visuals
     local visuals = tab_mod.new("Visuals")
     local espbox = visuals:newGroupBox("ESP")
-    espbox:newToggle("u_esp", "Player ESP", false, "Highlight players.",
-        function(v) state.esp = v end)
+    espbox:newToggleWithKeybind("u_esp", "Player ESP", false, "Highlight players.",
+        function(v) state.esp = v end, true)
     espbox:newToggle("u_esp_names", "Name Tags + Distance", true, "Billboard nametags.",
         function(v) state.esp_names = v end)
+    espbox:newToggle("u_esp_enemies", "Enemies Only", false, "Hide teammates (where Teams exist).",
+        function(v) state.esp_enemies = v end)
+    espbox:newSlider("u_esp_dist", "ESP Max Distance", 1000, 50, 5000, 0, true, "st",
+        function(v) state.esp_dist = v end)
     local world = visuals:newGroupBox("World")
-    world:newToggle("u_fullbright", "FullBright", false, "Force daylight.",
+    world:newToggle("u_fullbright", "FullBright", false, "Force daylight, no fog.",
         function(v) state.fullbright = v end)
+    local camera = visuals:newGroupBox("Camera")
+    camera:newToggle("u_fov_on", "Custom FOV", false, "Lock field of view.",
+        function(v) state.fov_on = v end)
+    camera:newSlider("u_fov", "FOV Value", 70, 30, 120, 0, true, "deg",
+        function(v) state.fov = v end)
+    camera:newToggle("u_zoom", "Infinite Zoom", false, "Zoom out up to 1000.",
+        function(v) state.zoom = v end)
 
-    -- UI tab: menu controls
+    -- UI tab: themes, configs, menu controls (same managers as Deepwoken menu)
     local uitab = tab_mod.new("UI")
+    local ok_t, ThemeManager = pcall(require, "@src/utility/librarys/managers/ThemeManager")
+    local ok_s, SaveManager = pcall(require, "@src/utility/librarys/managers/SaveManager")
+    if ok_t and ThemeManager and ThemeManager.SetLibrary then
+        pcall(function()
+            ThemeManager:SetLibrary(Lib)
+            ThemeManager:SetFolder("Project Rain/Universal-Config")
+            ThemeManager:ApplyToTab(uitab.Tab)
+        end)
+    end
+    if ok_s and SaveManager and SaveManager.BuildConfigSection then
+        pcall(function()
+            SaveManager:SetLibrary(Lib)
+            SaveManager:IgnoreThemeSettings()
+            SaveManager:SetFolder("Project Rain/Universal-Config")
+            SaveManager:SetIgnoreIndexes({ "u_fly", "u_noclip", "u_speed", "u_infjump" })
+            SaveManager:BuildConfigSection(uitab.Tab)
+        end)
+    end
     local menubox = uitab:newGroupBox("Menu")
     menubox:newButton("Unload Menu", function()
         unload_all()
     end, false, "Unloads the universal hub (all features off, UI destroyed).")
 
-    -- ESP container on its own layer (survives nothing, dies with unload)
     local gui_parent = nil
     pcall(function()
         gui_parent = (typeof(gethui) == "function" and gethui()) or game:GetService("CoreGui")
