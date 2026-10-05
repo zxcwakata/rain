@@ -1,3 +1,6 @@
+-- Universal hub: same Rain UI library as the Deepwoken menu, game-agnostic only.
+-- Tabs: Main (Movement), Visuals (ESP/World/Camera), UI (Themes/Configs/Menu).
+-- Opens on any place outside the Deepwoken allowlist. No Deepwoken modules.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -174,6 +177,14 @@ end
 
 return { start = function(place_id)
     require("@src/utility/librarys/ui")
+    -- restore: keybind toggles need loaded_signal, which the Deepwoken boot
+    -- creates after place routing — universal returns earlier, so make it here.
+    if not getgenv().loaded_signal then
+        local ok, sig = pcall(require, "@src/utility/signal")
+        if ok and sig and sig.new then
+            getgenv().loaded_signal = sig.new()
+        end
+    end
     local tab_mod = require("@src/utility/ui/wrapper")
     local Lib = getgenv().Library
     if not (Lib and Lib.PRWindow) then
@@ -190,7 +201,7 @@ return { start = function(place_id)
     -- Main / Movement
     local main = tab_mod.new("Main")
     local movement = main:newGroupBox("Movement")
-    movement:newToggleWithKeybind("u_fly", "Fly", false, "WASD + Space/Ctrl, camera direction.",
+    movement:newToggleWithKeybind("u_fly", "Fly", false, "lol, camera direction.",
         function(v)
             state.fly = v
             if not v and bv then pcall(function() bv:Destroy() end) bv = nil end
@@ -270,6 +281,11 @@ return { start = function(place_id)
             pcall(function() hum():ChangeState(Enum.HumanoidStateType.Jumping) end)
         end
     end)
+
+    -- restore: same clickable banner as the Deepwoken menu (src/ui/menu_banner.lua)
+    task.spawn(xpcall, function()
+        require("@src/ui/menu_banner").initialize()
+    end, warn)
 
     pcall(function()
         if Lib.Toggled ~= true then Lib:Toggle() end
