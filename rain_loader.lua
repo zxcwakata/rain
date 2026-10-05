@@ -23,7 +23,7 @@ local BASE_URL = "https://raw.githubusercontent.com/zxcwakata/rain/main/"
 -- version stamp: check with print(getgenv().RAIN_LOADER_VERSION).
 -- If it prints nil or an older tag, you are executing a STALE copy
 -- (old file contents, executor cache, or a duplicate in autoexec folder).
-getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-8"
+getgenv().RAIN_LOADER_VERSION = "2026-10-03/ports-11"
 print("[restore] loader " .. getgenv().RAIN_LOADER_VERSION)
 
 -- error collector: every warn() is also stored (cap 200 lines) so console
@@ -141,7 +141,7 @@ end
 
 local function __resolve(path)
     if STUBS[path] then return STUBS[path]() end
-    local rel = path:gsub("^@src/", "src/"):gsub("^@assets/", "assets/"):gsub("^@games/", "games/")
+    local rel = path:gsub("^@src/", "src/"):gsub("^@assets/", "assets/")
     local candidates = { rel .. ".lua", rel, rel .. ".json" }
     local last_err = nil
     for _, c in ipairs(candidates) do
@@ -524,7 +524,7 @@ do
         finished = true
     end)
     local t0 = tick()
-    while not finished and tick() - t0 < 15 do task.wait(0.25) end
+    while not finished and tick() - t0 < 6 do task.wait(0.25) end
 end
 if not lexend_ok then
     local g = Font.fromEnum(Enum.Font.Gotham)
@@ -547,19 +547,21 @@ if game.PlaceId == 4111023553 then
     return true
 end
 
--- standalone game hubs (games/ folder, one module per PlaceId)
-local GAME_HUBS = {
-    [2809202155] = "@games/yba", -- Your Bizarre Adventure
+-- universal fallback: any place outside the Deepwoken allowlist gets a small
+-- UI-only hub instead of silence (mirrors cutegirlnkcw's universal profile).
+local DEEPWOKEN_PLACES = {
+    [6473861193] = true, -- eastern
+    [5735553160] = true, -- depths
+    [6032399813] = true, -- etrean
+    [6832944305] = true, -- chime
+    [8668476218] = true, -- dungeon
 }
-do
-    local hub = GAME_HUBS[game.PlaceId]
-    if hub then
-        task.spawn(xpcall, function()
-            local m = brequire(hub)
-            if m and m.start then m.start() end
-        end, warn)
-        return true
-    end
+if not DEEPWOKEN_PLACES[game.PlaceId] then
+    task.spawn(xpcall, function()
+        local m = brequire("@src/universal_fallback")
+        if m and m.start then m.start(game.PlaceId) end
+    end, warn)
+    return true
 end
 
 env.signal = brequire("@src/utility/signal")
@@ -687,7 +689,7 @@ end
 
 if hasnt_accepted_tos then
     xpcall(function() brequire("@src/ui/tos") end, warn)
-    task.wait(1.5)
+    task.wait(1.0)
 end
 
 -- Feature class (generic_feature) must exist before any feature file loads
