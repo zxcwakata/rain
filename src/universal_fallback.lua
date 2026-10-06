@@ -1,17 +1,26 @@
+-- Universal hub: same Rain UI library as the Deepwoken menu, game-agnostic only.
+-- Tabs: Main (Movement), Visuals (ESP/World/Camera), UI (Themes/Configs/Menu).
+-- Opens on any place outside the Deepwoken allowlist. No Deepwoken modules.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local LP = Players.LocalPlayer
 
-local state = { fly = false, fly_speed = 120, speed = false, speed_val = 32,
-    noclip = false, infjump = false, esp = false, esp_names = true,
+local state = { fly = false, fly_speed = 120, speed = false, speed_val = 175,
+    jump_power = 50, noclip = false, infjump = false, esp = false, esp_names = true,
     esp_dist = 1000, esp_enemies = false, fullbright = false,
-    fov_on = false, fov = 70, zoom = false }
+    fov_on = false, fov = 70, zoom = false, jerk = false }
 local bv = nil
 local conns = {}
 local esp_gui = nil
 local saved_fov, saved_zoom = nil, nil
+
+-- restore: jerk-off tool state (mirrors Jerk OFF.lua: u4 run-flag, t1 conns)
+local jerk_tool = nil
+local jerk_running = false
+local jerk_conns = {}
+local jerk_char_conn = nil
 
 local function char() return LP.Character end
 local function hrp() local c = char() return c and c:FindFirstChild("HumanoidRootPart") end
@@ -25,7 +34,23 @@ end
 
 local function physics_tick()
     local c, r, h = char(), hrp(), hum()
-    if state.speed and h then pcall(function() h.WalkSpeed = state.speed_val end) end
+    -- restore: Deepwoken speed.lua — velocity-based, skipped while flying
+    if state.speed and not state.fly and r and h then
+        pcall(function()
+            local dir = Vector3.zero
+            if h.MoveDirection.Magnitude > 0 then dir = h.MoveDirection.Unit end
+            r.AssemblyLinearVelocity *= Vector3.new(0, 1, 0)
+            r.AssemblyLinearVelocity += dir * state.speed_val
+        end)
+    end
+    -- restore: Deepwoken infinite_jump.lua — hold Space to rise
+    if state.infjump and not state.fly and r
+        and UIS:IsKeyDown(Enum.KeyCode.Space) and not UIS:GetFocusedTextBox() then
+        pcall(function()
+            r.AssemblyLinearVelocity *= Vector3.new(1, 0, 1)
+            r.AssemblyLinearVelocity += Vector3.new(0, state.jump_power, 0)
+        end)
+    end
     if state.noclip and c then
         for _, p in ipairs(c:GetDescendants()) do
             if p:IsA("BasePart") and p.CanCollide then pcall(function() p.CanCollide = false end) end
@@ -154,13 +179,89 @@ local function esp_tick()
     end
 end
 
+-- restore: Jerk Off tool toggle (mirrors Jerk OFF.lua). ON gives the Tool and
+-- wires equip/unequip + respawn; OFF stops tracks, drops the Tool, unwires.
+local function jerk_anim_loop(anim_id, time_pos, threshold, slot)
+    local c = char()
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    if not h then return end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://" .. anim_id
+    local track = nil
+    pcall(function() track = h:LoadAnimation(anim) end)
+    pcall(function() anim:Destroy() end)
+    if not track then return end
+    jerk_conns[slot] = RunService.RenderStepped:Connect(function()
+        pcall(function()
+            if not jerk_running then
+                track:Stop()
+            elseif track.TimePosition >= threshold or track.IsPlaying == false then
+                track:Play()
+                track.TimePosition = time_pos
+            end
+        end)
+    end)
+    pcall(function() track:Play() track.TimePosition = time_pos end)
+end
+
+local function jerk_start_anims()
+    jerk_anim_loop("72042024", 0.5, 0.9, 1)
+    jerk_anim_loop("168268306", 1, 1.001, 2)
+    jerk_running = true
+end
+
+local function jerk_stop_anims()
+    jerk_running = false
+    for _, conn in pairs(jerk_conns) do pcall(function() conn:Disconnect() end) end
+    table.clear(jerk_conns)
+end
+
+local function jerk_give_tool()
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if not bp then
+        local ok, b = pcall(function() return LP:WaitForChild("Backpack", 5) end)
+        if ok then bp = b else return nil end
+    end
+    local old = bp:FindFirstChild("Jerk Off")
+    if old then pcall(function() old:Destroy() end) end
+    local tool = Instance.new("Tool")
+    tool.Name = "Jerk Off"
+    tool.RequiresHandle = false
+    tool.Parent = bp
+    tool.Equipped:Connect(function() if state.jerk then jerk_start_anims() end end)
+    tool.Unequipped:Connect(function() jerk_stop_anims() end)
+    return tool
+end
+
+local function jerk_stop()
+    jerk_stop_anims()
+    if jerk_char_conn then
+        pcall(function() jerk_char_conn:Disconnect() end)
+        jerk_char_conn = nil
+    end
+    pcall(function()
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        local t = bp and bp:FindFirstChild("Jerk Off")
+        if t then t:Destroy() end
+    end)
+    jerk_tool = nil
+end
+
+local function jerk_start()
+    jerk_stop()
+    jerk_tool = jerk_give_tool()
+    jerk_char_conn = LP.CharacterAdded:Connect(function()
+        if not state.jerk then return end
+        jerk_tool = jerk_give_tool()
+    end)
+end
+
 local function unload_all()
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     table.clear(conns)
     if bv then pcall(function() bv:Destroy() end) bv = nil end
     if esp_gui then pcall(function() esp_gui:Destroy() end) esp_gui = nil end
-    local h = hum()
-    if h then pcall(function() h.WalkSpeed = 16 end) end
+    jerk_stop()
     local Lib = getgenv().Library
     if Lib then
         pcall(function()
@@ -205,14 +306,23 @@ return { start = function(place_id)
         end, true)
     movement:newSlider("u_fly_speed", "Fly Speed", 120, 20, 400, 0, true, "st/s",
         function(v) state.fly_speed = v end)
-    movement:newToggleWithKeybind("u_speed", "WalkSpeed", false, "Constant walk speed.",
+    movement:newToggleWithKeybind("u_speed", "WalkSpeed", false, "Velocity-based, like Deepwoken.",
         function(v) state.speed = v end, true)
-    movement:newSlider("u_speed_val", "Speed Value", 32, 16, 200, 0, true, "st/s",
+    movement:newSlider("u_speed_val", "Speed Value", 175, 1, 250, 0, true, "st/s",
         function(v) state.speed_val = v end)
     movement:newToggleWithKeybind("u_noclip", "Noclip", false, "No collision.",
         function(v) state.noclip = v end, true)
-    movement:newToggle("u_infjump", "Infinite Jump", false, "Jump in mid-air.",
+    movement:newToggle("u_infjump", "Infinite Jump", false, "Hold Space to rise, like Deepwoken.",
         function(v) state.infjump = v end)
+    movement:newSlider("u_jump_power", "Jump Power", 50, 1, 500, 0, true, "",
+        function(v) state.jump_power = v end)
+
+    local fun = main:newGroupBox("Fun")
+    fun:newToggle("u_jerk", "Jerk", false, "Gives the Jerk Off tool; removing the toggle takes it back.",
+        function(v)
+            state.jerk = v
+            if v then jerk_start() else jerk_stop() end
+        end)
 
     -- Visuals
     local visuals = tab_mod.new("Visuals")
@@ -273,11 +383,6 @@ return { start = function(place_id)
 
     conns[#conns + 1] = RunService.PreSimulation:Connect(physics_tick)
     conns[#conns + 1] = RunService.Heartbeat:Connect(esp_tick)
-    conns[#conns + 1] = UIS.JumpRequest:Connect(function()
-        if state.infjump and hum() then
-            pcall(function() hum():ChangeState(Enum.HumanoidStateType.Jumping) end)
-        end
-    end)
 
     -- restore: same clickable banner as the Deepwoken menu (src/ui/menu_banner.lua)
     task.spawn(xpcall, function()
