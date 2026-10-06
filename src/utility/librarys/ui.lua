@@ -719,6 +719,52 @@ function Library:OnUnload(Callback)
 	Library.OnUnload = Callback
 end
 
+-- restore: watermark subsystem was stripped, but SaveManager
+-- (Watermark toggle/position) and linoria_watermark/auto_hide_hud expect it.
+do
+	local WM = Library:Create('Frame', {
+		BackgroundColor3 = Library.MainColor;
+		BorderColor3 = Library.AccentColor;
+		BorderMode = Enum.BorderMode.Inset;
+		Position = UDim2.new(0, 10, 0, 10);
+		Size = UDim2.new(0, 200, 0, 24);
+		Visible = false;
+		ZIndex = 100;
+		Parent = ScreenGui;
+	})
+	Library:AddToRegistry(WM, {
+		BackgroundColor3 = 'MainColor';
+		BorderColor3 = 'AccentColor';
+	})
+	local Label = Library:CreateLabel({
+		Position = UDim2.new(0, 6, 0, 0);
+		Size = UDim2.new(1, -12, 1, 0);
+		TextSize = 14;
+		TextXAlignment = Enum.TextXAlignment.Left;
+		RichText = true;
+		ZIndex = 101;
+		Parent = WM;
+	}, true)
+	Library:MakeDraggable(WM, 24);
+
+	function Library:SetWatermark(Text, RawText)
+		if typeof(Text) == "string" and #Text > 0 then
+			Label.Text = Text
+			local w = 200
+			pcall(function()
+				w = Label.TextBounds.X / Library:GetUIScale() + 16
+			end)
+			WM.Size = UDim2.new(0, math.max(60, w), 0, 24)
+		end
+	end
+
+	function Library:SetWatermarkVisibility(Value)
+		WM.Visible = Value and true or false
+	end
+
+	Library.Watermark = WM
+end
+
 Library:GiveSignal(ScreenGui.DescendantRemoving:Connect(function(Instance)
 	if Library.RegistryMap[Instance] then
 		Library:RemoveFromRegistry(Instance);
