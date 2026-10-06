@@ -2,8 +2,14 @@
 
 local last_update = tick();
 local custom_name = not LPH_OBFUSCATED and isfile("custom_name.txt") and readfile("custom_name.txt") or nil;
+-- restore: bare Library may be a stale snapshot in this chunk's env
+local function UILib()
+    local gg = (typeof(getgenv) == "function" and getgenv()) or {}
+    return (gg.Library ~= nil and gg.Library) or Library
+end
 aztup.maid:give_task(scheduler:add_task(0.5):Connect(function()
-    if not Latency then return end
+    local Lib = UILib()
+    if not Latency or not Lib then return end
     last_update = tick();
 
     if not services.Stats:FindFirstChild("FrameRateManager") then return end
@@ -13,7 +19,7 @@ aztup.maid:give_task(scheduler:add_task(0.5):Connect(function()
     local memory_val = performance_stats and performance_stats.Memory;
 
     local fps = 1000 / frame_rate_manager.RenderAverage:GetValue();
-    local color_in_hex = Library.AccentColor:ToHex()
+    local color_in_hex = Lib.AccentColor:ToHex()
 
     local show_mem_data = aztup_toggles.WatermarkShowsMem and aztup_toggles.WatermarkShowsMem.Value;
 
@@ -40,7 +46,7 @@ aztup.maid:give_task(scheduler:add_task(0.5):Connect(function()
         )
     end
 
-    Library:SetWatermark(watermark, raw_watermark); 
+    Lib:SetWatermark(watermark, raw_watermark); 
 end));
 
 return nil
