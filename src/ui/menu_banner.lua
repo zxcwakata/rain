@@ -6,8 +6,8 @@ local IMAGE_URL = "" -- e.g. "https://.../banner.png"
 -- H = 550*944/1088 = 477 keeps ratio.
 -- GRAB_OVERLAP: how many px the picture slides DOWN over the window edge
 -- (hands "grab" the frame). Increase if hands float above, decrease if buried.
-local BANNER_W, BANNER_H = 550, 550
-local GRAB_OVERLAP = 15
+local BANNER_W, BANNER_H = 550, 510
+local GRAB_OVERLAP = 21
 
 local function resolve_image()
     -- restore: executor globals (getcustomasset/isfile/writefile) may be
